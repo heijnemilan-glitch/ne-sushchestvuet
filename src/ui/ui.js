@@ -29,7 +29,11 @@ const KEY_NAMES = {
   inventory: 'Инвентарь',
   journal: 'Журнал',
   drop: 'Положить предмет',
+  screenshot: 'Снимок экрана',
 };
+
+// Сайт игры — туда ведёт «Поделиться моментом».
+export const SITE_URL = 'https://heijnemilan-glitch.github.io/ne-sushchestvuet/';
 
 export class UI {
   constructor(game) {
@@ -129,7 +133,7 @@ export class UI {
   setHelp(show) {
     const k = this.game.settings.keys;
     this.el.helpline.innerHTML = show
-      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">Esc</span>пауза`
+      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">${keyLabel(k.screenshot)}</span>снимок · <span class="kbd">Esc</span>пауза`
       : '';
   }
 
@@ -253,6 +257,7 @@ export class UI {
         <button class="menu-item" data-a="load">Загрузить</button>
         <button class="menu-item" data-a="journal">Журнал</button>
         <button class="menu-item" data-a="settings">Настройки</button>
+        <button class="menu-item" data-a="share">Поделиться моментом ↗</button>
         <button class="menu-item" data-a="menu">В главное меню</button>
       </div><div class="footer" style="justify-content:flex-start;color:var(--dim);font-size:12px">Мир № ${esc(g.worldTag())} · ${formatTime(g.mem.data.playTime)} в секторе</div></div>`;
     const el = this.openModal('pause', html);
@@ -264,6 +269,10 @@ export class UI {
         if (a === 'load') this.showSaves('load', () => this.showPause());
         if (a === 'journal') this.showJournal('notes', () => this.showPause());
         if (a === 'settings') this.showSettings(() => this.showPause());
+        if (a === 'share') {
+          window.open(`${SITE_URL}#/new`, '_blank', 'noopener');
+          this.toast(`Снимок кадра — клавиша [${keyLabel(g.settings.keys.screenshot)}]. Файл попадёт в «Загрузки».`);
+        }
         if (a === 'menu') {
           g.save('auto');
           this.modal = null;

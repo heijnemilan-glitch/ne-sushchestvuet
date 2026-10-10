@@ -94,7 +94,7 @@ export async function launchEdge({ width = 1366, height = 800, headless = true, 
       async goto(u) {
         await send('Page.navigate', { url: u });
         await sleep(400);
-        await page.wait('document.readyState === "complete"');
+        await page.wait('document.readyState !== "loading"');
       },
       async shot(file, opts = {}) {
         const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!opts.full, ...(opts.full ? {} : {}) });
@@ -105,7 +105,7 @@ export async function launchEdge({ width = 1366, height = 800, headless = true, 
       },
       close: () => ws.close(),
     };
-    await page.wait('document.readyState === "complete"');
+    await page.wait('document.readyState !== "loading"');
     return page;
   }
 

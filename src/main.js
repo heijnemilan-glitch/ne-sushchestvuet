@@ -435,6 +435,30 @@ class Game {
     else if (e.code === k.inventory || e.code === 'KeyI') ui.showInventory();
     else if (e.code === k.journal) ui.showJournal('notes');
     else if (e.code === k.drop) this.quickDrop();
+    else if (e.code === k.screenshot) this.pendingShot = true;
+  }
+
+  // Снимок кадра без интерфейса — сразу после отрисовки, пока буфер не очищен.
+  takeShot() {
+    this.pendingShot = false;
+    try {
+      this.renderer.domElement.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        a.download = `ne-sushchestvuet-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.jpg`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+        this.audio.play('click');
+        this.ui.toast('Снимок сохранён в «Загрузки». Выложите его на сайте в «Моменты».');
+        this.mem.count('screenshots');
+      }, 'image/jpeg', 0.9);
+    } catch (err) {
+      console.warn('[shot]', err);
+      this.ui.toast('Не удалось сделать снимок.');
+    }
   }
 
   onModal(open) {
@@ -566,6 +590,7 @@ class Game {
       console.error('[game] ошибка в кадре:', err);
     }
     this.renderer.render(this.scene, this.camera);
+    if (this.pendingShot) this.takeShot();
   }
 
   update(dt) {

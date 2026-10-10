@@ -38,6 +38,35 @@
 
 Игра анализирует только действия внутри самой игры. Она не обращается к файлам, камере, микрофону или другим программам.
 
+## Сайт
+
+Адрес: https://heijnemilan-glitch.github.io/ne-sushchestvuet/
+
+- `index.html` и `site/`: главная, галерея, «Моменты» (лента, лайки, комментарии, профили, жалобы), вход через Google.
+- `play/`: игра в браузере. `download/`: файл для скачивания. Оба создаются командой `node build.mjs`.
+- База данных: Firebase (Auth + Firestore) на бесплатном тарифе Spark. Картинки сжимаются в браузере и хранятся прямо в Firestore, поэтому платное хранилище не нужно.
+- `firestore.rules`: правила безопасности. Они проверены автотестом `tools/site-test.mjs` против эмулятора Firebase (34 проверки, включая 11 попыток взлома).
+
+### Подключение Firebase (один раз, нужен взрослый Google-аккаунт)
+
+1. Зайти на https://console.firebase.google.com → **Создать проект** (Google Analytics можно выключить).
+2. **Build → Authentication → Get started → Sign-in method → Google → Enable**, указать e-mail поддержки, сохранить.
+3. Там же **Settings → Authorized domains → Add domain**: `heijnemilan-glitch.github.io`.
+4. **Build → Firestore Database → Create database**, регион `eur3 (europe-west)`, режим **production**.
+5. **Project settings (шестерёнка) → General → Your apps → значок `</>`** (Web app), назвать «site», нажать Register и скопировать объект `firebaseConfig`.
+6. Вставить этот объект в `site/firebase-config.js` вместо `null`.
+7. Залить правила и индексы: `firebase login`, затем `firebase deploy --only firestore --project <id-проекта>`.
+8. Администратор: в Firestore создать документ `meta/admins` с полем `uids` (массив) и вписать туда свой uid (виден в Authentication → Users).
+
+### Локальная проверка сайта
+
+```
+firebase emulators:start --only auth,firestore --project demo-ne-sushchestvuet
+node tools/serve.mjs 5050          # затем http://localhost:5050/?emu — тестовый режим с эмулятором
+node tools/site-test.mjs           # автотест сайта и правил в Edge
+node tools/game-ui-test.mjs        # проверка меню игры настоящими кликами
+```
+
 ## Для разработчика
 
 ```

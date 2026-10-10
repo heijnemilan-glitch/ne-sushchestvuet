@@ -122,6 +122,7 @@ export const DEFAULT_SETTINGS = {
     inventory: 'Tab',
     journal: 'KeyJ',
     drop: 'KeyG',
+    screenshot: 'KeyP',
   },
 };
 

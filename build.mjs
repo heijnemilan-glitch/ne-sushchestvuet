@@ -32,7 +32,11 @@ const html = `<!doctype html>
 </html>
 `;
 writeFileSync(join(root, 'PLAY.html'), html);
-writeFileSync(join(root, 'index.html'), html); // для GitHub Pages
+// для сайта: игра в браузере (/play/) и файл для скачивания (/download/)
+mkdirSync(join(root, 'play'), { recursive: true });
+mkdirSync(join(root, 'download'), { recursive: true });
+writeFileSync(join(root, 'play', 'index.html'), html);
+writeFileSync(join(root, 'download', 'ne-sushchestvuet.html'), html);
 // копия на рабочий стол — чтобы запускать двойным щелчком
 try {
   writeFileSync(join(root, '..', 'НЕ СУЩЕСТВУЕТ.html'), html);

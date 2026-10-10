@@ -1,0 +1,122 @@
+rules_version = '2';
+
+// Правила безопасности базы «Моменты».
+// Читать может любой. Писать — только вошедший через Google, и только от своего имени.
+// Удалять пост может автор или администратор (список uid в документе meta/admins).
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(db)/documents/meta/admins)
+        && request.auth.uid in get(/databases/$(db)/documents/meta/admins).data.uids;
+    }
+
+    function validAuthor(a) {
+      return a is map
+        && a.keys().hasOnly(['name', 'photo'])
+        && a.name is string && a.name.size() > 0 && a.name.size() <= 60
+        && (a.photo == null || (a.photo is string && a.photo.size() <= 600));
+    }
+
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'photo', 'joinedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && (request.resource.data.photo == null || (request.resource.data.photo is string && request.resource.data.photo.size() <= 600));
+    }
+
+    match /posts/{pid} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'author', 'text', 'code', 'codeId', 'spoiler', 'thumb', 'w', 'h', 'likes', 'likedBy', 'comments', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && validAuthor(request.resource.data.author)
+        && request.resource.data.text is string && request.resource.data.text.size() <= 500
+        && request.resource.data.thumb is string && request.resource.data.thumb.size() < 250000
+        && request.resource.data.thumb.matches('^data:image/(jpeg|webp);base64,.+')
+        && request.resource.data.w is int && request.resource.data.h is int
+        && request.resource.data.spoiler is bool
+        && (request.resource.data.code == null || (request.resource.data.code is string && request.resource.data.code.size() <= 14))
+        && (request.resource.data.codeId == null || (request.resource.data.codeId is string && request.resource.data.codeId.size() <= 40))
+        && request.resource.data.likes == 0
+        && request.resource.data.likedBy.size() == 0
+        && request.resource.data.comments == 0
+        && request.resource.data.createdAt == request.time;
+
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      allow update: if signedIn() && (
+        // лайк / снятие лайка — только своего uid, счётчик всегда равен размеру списка
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy'])
+          && request.resource.data.likes == request.resource.data.likedBy.size()
+          && request.resource.data.likedBy.size() <= 10000
+          && (
+            (request.resource.data.likedBy.toSet().difference(resource.data.likedBy.toSet()) == [request.auth.uid].toSet()
+              && resource.data.likedBy.toSet().difference(request.resource.data.likedBy.toSet()).size() == 0)
+            || (resource.data.likedBy.toSet().difference(request.resource.data.likedBy.toSet()) == [request.auth.uid].toSet()
+              && request.resource.data.likedBy.toSet().difference(resource.data.likedBy.toSet()).size() == 0)
+          ))
+        // счётчик комментариев меняется ровно на 1
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments'])
+          && (request.resource.data.comments == resource.data.comments + 1
+            || request.resource.data.comments == resource.data.comments - 1))
+        // автор может исправить подпись и пометку «спойлер»
+        || (resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'spoiler'])
+          && request.resource.data.text is string && request.resource.data.text.size() <= 500
+          && request.resource.data.spoiler is bool)
+      );
+
+      // полноразмерная картинка — отдельный документ, чтобы лента грузилась быстро
+      match /full/{doc} {
+        allow read: if true;
+        allow create: if signedIn()
+          && getAfter(/databases/$(db)/documents/posts/$(pid)).data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['data'])
+          && request.resource.data.data is string
+          && request.resource.data.data.size() < 1000000
+          && request.resource.data.data.matches('^data:image/(jpeg|webp);base64,.+');
+        allow delete: if signedIn()
+          && (get(/databases/$(db)/documents/posts/$(pid)).data.uid == request.auth.uid || isAdmin());
+      }
+
+      match /comments/{cid} {
+        allow read: if true;
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid', 'author', 'text', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && validAuthor(request.resource.data.author)
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 300
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn()
+          && (resource.data.uid == request.auth.uid
+            || get(/databases/$(db)/documents/posts/$(pid)).data.uid == request.auth.uid
+            || isAdmin());
+      }
+    }
+
+    match /reports/{rid} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['postId', 'uid', 'reason', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.postId is string && request.resource.data.postId.size() <= 64
+        && request.resource.data.reason is string && request.resource.data.reason.size() <= 200
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+    }
+
+    // список администраторов меняется только из консоли Firebase
+    match /meta/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
