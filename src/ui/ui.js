@@ -1,0 +1,754 @@
+// UIManager — меню, HUD, инвентарь, журнал, терминалы, записки, настройки, сохранения, финалы.
+// Всё — обычный DOM поверх canvas. Журнал хранит наблюдения и догадки, а не готовые решения.
+
+import { ITEMS } from '../systems/inventory.js';
+import { roomName } from '../systems/story.js';
+import { SLOTS } from '../systems/save.js';
+import { parseCode, DISCOVERIES } from '../systems/codes.js';
+import { formatTime } from '../core/util.js';
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+export function keyLabel(code) {
+  if (!code) return '—';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  const map = { ShiftLeft: 'Shift', ShiftRight: 'Shift (пр.)', ControlLeft: 'Ctrl', Space: 'Пробел', Tab: 'Tab', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', AltLeft: 'Alt', CapsLock: 'Caps', Enter: 'Enter', Backquote: '`' };
+  return map[code] || code;
+}
+
+const KEY_NAMES = {
+  forward: 'Вперёд',
+  back: 'Назад',
+  left: 'Влево',
+  right: 'Вправо',
+  sprint: 'Бег',
+  interact: 'Действие',
+  flashlight: 'Фонарь',
+  inventory: 'Инвентарь',
+  journal: 'Журнал',
+  drop: 'Положить предмет',
+};
+
+export class UI {
+  constructor(game) {
+    this.game = game;
+    this.modal = null;
+    this.back = null;
+    this.hintTimer = 0;
+    this.build();
+  }
+
+  build() {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div id="vignette" class="layer"></div>
+      <div id="grain" class="layer"></div>
+      <div id="distort" class="layer"></div>
+      <div id="hud" class="layer hidden">
+        <div id="crosshair"></div>
+        <div id="prompt"></div>
+        <div id="hint"></div>
+        <div id="area"></div>
+        <div id="toasts"></div>
+        <div id="active-item"></div>
+        <div id="helpline"></div>
+        <div id="examine-ui" class="hidden"><div class="t"></div><div class="d"></div><div class="h">Мышь — вращать · [E] или [Esc] — убрать</div></div>
+      </div>
+      <div id="lockhint" class="hidden">Щёлкните, чтобы продолжить</div>
+      <div id="modal" class="screen hidden"></div>
+      <div id="menu" class="screen solid hidden"></div>
+      <div id="ending" class="screen solid hidden"></div>
+      <div id="fade" class="layer"></div>`;
+    document.body.appendChild(root);
+    this.el = {
+      hud: $('#hud'),
+      crosshair: $('#crosshair'),
+      prompt: $('#prompt'),
+      hint: $('#hint'),
+      area: $('#area'),
+      toasts: $('#toasts'),
+      modal: $('#modal'),
+      menu: $('#menu'),
+      ending: $('#ending'),
+      fade: $('#fade'),
+      distort: $('#distort'),
+      lockhint: $('#lockhint'),
+      helpline: $('#helpline'),
+      active: $('#active-item'),
+      examine: $('#examine-ui'),
+    };
+    this.el.lockhint.addEventListener('click', () => this.game.lockPointer());
+  }
+
+  // ── HUD ───────────────────────────────────────────────────────────────────
+  showHUD(on) {
+    this.el.hud.classList.toggle('hidden', !on);
+  }
+
+  setPrompt(text, code) {
+    if (text === this._prompt) return;
+    this._prompt = text;
+    this.el.prompt.classList.toggle('on', !!text);
+    this.el.crosshair.classList.toggle('active', !!text);
+    if (text) this.el.prompt.innerHTML = `<kbd>${esc(keyLabel(code))}</kbd>${esc(text)}`;
+  }
+
+  hint(text, seconds = 4) {
+    if (!text) return;
+    this.el.hint.textContent = text;
+    this.el.hint.classList.add('on');
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => this.el.hint.classList.remove('on'), seconds * 1000);
+  }
+
+  toast(text) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = text;
+    this.el.toasts.appendChild(t);
+    setTimeout(() => t.remove(), 4600);
+  }
+
+  area(name) {
+    this.el.area.textContent = name;
+    this.el.area.classList.add('on');
+    clearTimeout(this.areaTimer);
+    this.areaTimer = setTimeout(() => this.el.area.classList.remove('on'), 2600);
+  }
+
+  fade(on) {
+    this.el.fade.style.opacity = on ? '1' : '0';
+  }
+
+  distort(strength) {
+    this.el.distort.style.opacity = String(strength);
+  }
+
+  setHelp(show) {
+    const k = this.game.settings.keys;
+    this.el.helpline.innerHTML = show
+      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">Esc</span>пауза`
+      : '';
+  }
+
+  setActiveItem(text) {
+    this.el.active.textContent = text || '';
+  }
+
+  showLockHint(on) {
+    this.el.lockhint.classList.toggle('hidden', !on);
+  }
+
+  // ── модальные окна ────────────────────────────────────────────────────────
+  openModal(name, html, back = null) {
+    this.modal = name;
+    this.back = back;
+    this.el.modal.innerHTML = html;
+    this.el.modal.classList.remove('hidden');
+    this.game.onModal(true);
+    const close = this.el.modal.querySelector('[data-close]');
+    if (close) close.addEventListener('click', () => this.closeModal());
+    return this.el.modal;
+  }
+
+  // Esc / крестик: назад по цепочке или в игру.
+  closeModal() {
+    if (!this.modal) return;
+    if (this.modal === 'terminal' && this.termTyping) {
+      this.termSkip = true;
+      return;
+    }
+    const back = this.back;
+    this.modal = null;
+    this.back = null;
+    this.el.modal.classList.add('hidden');
+    this.el.modal.innerHTML = '';
+    if (this.onModalClose) {
+      const f = this.onModalClose;
+      this.onModalClose = null;
+      f();
+    }
+    if (back) back();
+    else this.game.onModal(false);
+  }
+
+  // ── главное меню ──────────────────────────────────────────────────────────
+  showMenu() {
+    const g = this.game;
+    const last = g.saves.lastSlot();
+    const m = this.el.menu;
+    m.innerHTML = `
+      <div class="wrap">
+        <h1>НЕ СУЩЕСТВУЕТ</h1>
+        <div class="sub">IT DOESN'T EXIST · Сектор 0</div>
+        <button class="menu-item" data-a="continue" ${last ? '' : 'disabled'}>Продолжить</button>
+        <button class="menu-item" data-a="new">Новая игра</button>
+        <button class="menu-item" data-a="load">Выбрать сохранение</button>
+        <button class="menu-item" data-a="settings">Настройки</button>
+        <button class="menu-item" data-a="codes">Коды открытий</button>
+        <button class="menu-item" data-a="exit">Выход</button>
+        <div class="foot">Игра работает без интернета. Прогресс хранится в этом браузере; сохранения можно выгрузить в файл.<br>Лучше играть в наушниках. ${g.profile.endings.length ? `<br>Найдено исходов: ${g.profile.endings.length}/4.` : ''}</div>
+      </div>`;
+    m.classList.remove('hidden');
+    this.el.ending.classList.add('hidden');
+    this.showHUD(false);
+    m.querySelectorAll('[data-a]').forEach((b) =>
+      b.addEventListener('click', () => {
+        g.audio.init();
+        g.audio.play('ui');
+        const a = b.dataset.a;
+        if (a === 'continue') g.continueGame();
+        if (a === 'new') this.confirmNew();
+        if (a === 'load') this.showSaves('load', () => this.showMenu());
+        if (a === 'settings') this.showSettings(() => this.showMenu());
+        if (a === 'codes') this.showCodesScreen(() => this.showMenu());
+        if (a === 'exit') this.showExit();
+      })
+    );
+  }
+
+  hideMenu() {
+    this.el.menu.classList.add('hidden');
+  }
+
+  confirmNew() {
+    const g = this.game;
+    const html = `<div class="panel" style="width:min(520px,92vw)"><header>Новая игра<button class="x" data-close>×</button></header>
+      <div class="body" style="font-size:15px;line-height:1.6">Новый мир получит собственный номер — детали и порядок событий в нём будут отличаться от других миров.<br><br>Выберите слот для автосохранений новой игры. Существующие сохранения в других слотах не пострадают.</div>
+      <div class="footer">${['1', '2', '3']
+        .map((s) => {
+          const i = g.saves.info(s);
+          return `<button class="btn" data-slot="${s}">Слот ${s}${i ? ' (перезаписать)' : ''}</button>`;
+        })
+        .join('')}</div></div>`;
+    const el = this.openModal('new', html, () => this.showMenu());
+    el.querySelectorAll('[data-slot]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.modal = null;
+        this.el.modal.classList.add('hidden');
+        g.newGame(b.dataset.slot);
+      })
+    );
+  }
+
+  showExit() {
+    this.el.menu.innerHTML = `<div class="wrap"><h1>…</h1><div class="sub">Комплекс помнит вас</div><div class="foot">Вкладку можно закрыть. Прогресс сохранён.</div><button class="menu-item" id="back-menu">Вернуться</button></div>`;
+    $('#back-menu').addEventListener('click', () => this.showMenu());
+    try {
+      window.close();
+    } catch {
+      /* браузер не даёт закрыть вкладку скриптом — это нормально */
+    }
+  }
+
+  // ── пауза ─────────────────────────────────────────────────────────────────
+  showPause() {
+    const g = this.game;
+    const html = `<div class="panel" style="width:min(420px,92vw)"><header>Пауза<button class="x" data-close>×</button></header>
+      <div class="body" style="display:flex;flex-direction:column;gap:2px">
+        <button class="menu-item" data-a="resume">Продолжить</button>
+        <button class="menu-item" data-a="save">Сохранить</button>
+        <button class="menu-item" data-a="load">Загрузить</button>
+        <button class="menu-item" data-a="journal">Журнал</button>
+        <button class="menu-item" data-a="settings">Настройки</button>
+        <button class="menu-item" data-a="menu">В главное меню</button>
+      </div><div class="footer" style="justify-content:flex-start;color:var(--dim);font-size:12px">Мир № ${esc(g.worldTag())} · ${formatTime(g.mem.data.playTime)} в секторе</div></div>`;
+    const el = this.openModal('pause', html);
+    el.querySelectorAll('[data-a]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const a = b.dataset.a;
+        if (a === 'resume') this.closeModal();
+        if (a === 'save') this.showSaves('save', () => this.showPause());
+        if (a === 'load') this.showSaves('load', () => this.showPause());
+        if (a === 'journal') this.showJournal('notes', () => this.showPause());
+        if (a === 'settings') this.showSettings(() => this.showPause());
+        if (a === 'menu') {
+          g.save('auto');
+          this.modal = null;
+          this.el.modal.classList.add('hidden');
+          g.toMenu();
+        }
+      })
+    );
+  }
+
+  // ── сохранения ────────────────────────────────────────────────────────────
+  showSaves(mode, back) {
+    const g = this.game;
+    const rows = SLOTS.map((s) => {
+      const i = g.saves.info(s);
+      const name = s === 'auto' ? 'Автосохранение' : `Слот ${s}`;
+      let meta = '<span class="meta">пусто</span>';
+      if (i && i.damaged && !i.recoverable) meta = '<span class="meta bad">повреждено, восстановить нельзя</span>';
+      else if (i) meta = `<span class="meta">${esc(roomName(i.room || '?'))} · ${formatTime(i.playTime || 0)} · мир № ${esc(i.world || '?')} · ${i.savedAt ? new Date(i.savedAt).toLocaleString('ru-RU') : ''}${i.damaged ? ' · <span class="bad">повреждено — будет загружена резервная копия</span>' : ''}</span>`;
+      const canSave = mode === 'save' && g.inGame && s !== 'auto';
+      return `<div class="slot"><div><div class="name">${name}</div>${meta}</div><div class="acts">
+        ${canSave ? `<button class="btn" data-save="${s}">Сохранить</button>` : ''}
+        ${i && !(i.damaged && !i.recoverable) ? `<button class="btn" data-load="${s}">Загрузить</button>` : ''}
+        ${i ? `<button class="btn" data-export="${s}">В файл</button>` : ''}
+        ${s !== 'auto' ? `<button class="btn" data-import="${s}">Из файла</button>` : ''}
+        ${i ? `<button class="btn danger" data-del="${s}">Удалить</button>` : ''}
+      </div></div>`;
+    }).join('');
+    const html = `<div class="panel"><header>${mode === 'save' ? 'Сохранить игру' : 'Сохранения'}<button class="x" data-close>×</button></header><div class="body">${rows}</div>
+      <div class="footer" style="justify-content:space-between;color:var(--dim);font-size:12px"><span>Перед каждой записью создаётся резервная копия слота.</span><input type="file" id="import-file" accept=".json,.txt" class="hidden"></div></div>`;
+    const el = this.openModal('saves', html, back);
+    el.querySelectorAll('[data-save]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const ok = g.save(b.dataset.save);
+        this.toast(ok ? 'Сохранено.' : 'Не удалось сохранить (хранилище браузера недоступно).');
+        this.showSaves(mode, back);
+      })
+    );
+    el.querySelectorAll('[data-load]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.modal = null;
+        this.el.modal.classList.add('hidden');
+        g.loadSlot(b.dataset.load);
+      })
+    );
+    el.querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (b.dataset.confirm) {
+          g.saves.remove(b.dataset.del);
+          this.showSaves(mode, back);
+        } else {
+          b.dataset.confirm = '1';
+          b.textContent = 'Точно удалить?';
+        }
+      })
+    );
+    el.querySelectorAll('[data-export]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const text = g.saves.exportText(b.dataset.export);
+        const blob = new Blob([text], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `ne-sushchestvuet-${b.dataset.export}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      })
+    );
+    const file = $('#import-file', el);
+    el.querySelectorAll('[data-import]').forEach((b) =>
+      b.addEventListener('click', () => {
+        file.dataset.slot = b.dataset.import;
+        file.click();
+      })
+    );
+    file.addEventListener('change', async () => {
+      const f = file.files[0];
+      if (!f) return;
+      const r = g.saves.importText(file.dataset.slot, await f.text());
+      this.toast(r.ok ? 'Сохранение загружено в слот.' : r.error);
+      this.showSaves(mode, back);
+    });
+  }
+
+  // ── настройки ─────────────────────────────────────────────────────────────
+  showSettings(back) {
+    const g = this.game;
+    const s = g.settings;
+    const range = (key, label, min, max, step, fmt = (v) => Math.round(v * 100) + '%') =>
+      `<div class="row"><label for="s-${key}">${label}</label><input type="range" id="s-${key}" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"><span class="val">${fmt(s[key])}</span></div>`;
+    const keys = Object.keys(KEY_NAMES)
+      .map((k) => `<div class="keyrow"><span>${KEY_NAMES[k]}</span><button class="keybtn" data-key="${k}">${esc(keyLabel(s.keys[k]))}</button></div>`)
+      .join('');
+    const html = `<div class="panel"><header>Настройки<button class="x" data-close>×</button></header><div class="body">
+      <h3>Звук</h3>
+      ${range('master', 'Общая громкость', 0, 1, 0.05)}
+      ${range('ambient', 'Окружение', 0, 1, 0.05)}
+      ${range('sfx', 'Эффекты', 0, 1, 0.05)}
+      <h3>Управление</h3>
+      ${range('sens', 'Чувствительность мыши', 0.2, 3, 0.05, (v) => (+v).toFixed(2))}
+      <div class="row"><label>Инверсия оси Y</label><select data-k="invertY"><option value="false">Нет</option><option value="true" ${s.invertY ? 'selected' : ''}>Да</option></select><span></span></div>
+      <div class="row"><label>Покачивание камеры</label><select data-k="headBob"><option value="true">Да</option><option value="false" ${s.headBob === false ? 'selected' : ''}>Нет</option></select><span></span></div>
+      ${keys}
+      <h3>Графика</h3>
+      <div class="row"><label>Качество</label><select data-k="quality">
+        <option value="low" ${s.quality === 'low' ? 'selected' : ''}>Низкое (без теней, 4 источника)</option>
+        <option value="medium" ${s.quality === 'medium' ? 'selected' : ''}>Среднее (6 источников)</option>
+        <option value="high" ${s.quality === 'high' ? 'selected' : ''}>Высокое (тени фонаря, 8 источников)</option></select><span></span></div>
+      ${range('resScale', 'Разрешение рендера', 0.5, 1, 0.05)}
+      ${range('fov', 'Поле зрения', 60, 95, 1, (v) => Math.round(v) + '°')}
+      <div class="row"><label>Полноэкранный режим</label><button class="btn" id="fs">Переключить</button><span></span></div>
+      <div style="color:var(--dim);font-size:12px;margin-top:10px">Изменение качества применяется сразу; текстуры перестраиваются при следующем запуске игры.</div>
+      </div><div class="footer"><button class="btn" id="s-reset">Сбросить</button><button class="btn" data-close>Готово</button></div></div>`;
+    const el = this.openModal('settings', html, back);
+    el.querySelectorAll('input[type=range]').forEach((inp) =>
+      inp.addEventListener('input', () => {
+        const k = inp.dataset.k;
+        s[k] = parseFloat(inp.value);
+        inp.nextElementSibling.textContent = k === 'sens' ? s[k].toFixed(2) : k === 'fov' ? Math.round(s[k]) + '°' : Math.round(s[k] * 100) + '%';
+        g.applySettings();
+      })
+    );
+    el.querySelectorAll('select').forEach((sel) =>
+      sel.addEventListener('change', () => {
+        const k = sel.dataset.k;
+        s[k] = sel.value === 'true' ? true : sel.value === 'false' ? false : sel.value;
+        g.applySettings();
+      })
+    );
+    el.querySelectorAll('[data-key]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        btn.classList.add('wait');
+        btn.textContent = 'нажмите клавишу…';
+        this.capturing = (code) => {
+          if (code !== 'Escape') {
+            // клавиша уже занята? меняем местами
+            const k = btn.dataset.key;
+            const other = Object.keys(s.keys).find((o) => s.keys[o] === code && o !== k);
+            if (other) s.keys[other] = s.keys[k];
+            s.keys[k] = code;
+            g.applySettings();
+          }
+          this.capturing = null;
+          this.showSettings(back);
+        };
+      })
+    );
+    $('#fs', el).addEventListener('click', () => g.toggleFullscreen());
+    $('#s-reset', el).addEventListener('click', () => {
+      g.resetSettings();
+      this.showSettings(back);
+    });
+  }
+
+  // ── инвентарь ─────────────────────────────────────────────────────────────
+  showInventory(selected) {
+    const g = this.game;
+    const items = g.inv.list;
+    const sel = selected && items.includes(selected) ? selected : items[0];
+    const k = g.settings.keys;
+    const list = items.length
+      ? items.map((id) => `<button class="inv-item ${id === sel ? 'sel' : ''}" data-id="${id}">${esc(ITEMS[id].name)}</button>`).join('')
+      : '<div class="empty">Пусто.</div>';
+    const desc = sel
+      ? `<div class="t">${esc(ITEMS[sel].name)}</div><div>${esc(ITEMS[sel].desc)}</div>`
+      : '<div class="empty">Важные предметы появятся здесь.</div>';
+    const html = `<div class="panel"><header>Инвентарь<button class="x" data-close>×</button></header>
+      <div class="body"><div class="inv"><div class="inv-list">${list}</div><div class="inv-desc">${desc}</div></div></div>
+      <div class="footer">${sel ? `<button class="btn" id="examine">Осмотреть</button>${sel !== 'flashlight' ? `<button class="btn" id="drop">Положить [${keyLabel(k.drop)}]</button>` : ''}` : ''}<button class="btn" data-close>Закрыть [${keyLabel(k.inventory)}]</button></div></div>`;
+    const el = this.openModal('inventory', html);
+    this.invSelected = sel;
+    el.querySelectorAll('.inv-item').forEach((b) => b.addEventListener('click', () => this.showInventory(b.dataset.id)));
+    const ex = $('#examine', el);
+    if (ex) ex.addEventListener('click', () => g.examine(sel));
+    const dr = $('#drop', el);
+    if (dr) dr.addEventListener('click', () => g.dropItem(sel));
+  }
+
+  // ── записка ───────────────────────────────────────────────────────────────
+  showNote(title, text) {
+    const html = `<div class="paper"><span class="close" data-close>закрыть [Esc]</span><h2>${esc(title)}</h2>${esc(text)}</div>`;
+    const back = this.modal === 'journal' ? this.journalBack : null;
+    this.openModal('note', html, back);
+  }
+
+  // ── журнал ────────────────────────────────────────────────────────────────
+  showJournal(tab = 'notes', back = null) {
+    const g = this.game;
+    const mem = g.mem;
+    this.journalBack = () => this.showJournal(tab, back);
+    const tabs = [
+      ['notes', 'Записи'],
+      ['obs', 'Наблюдения'],
+      ['rules', 'Закономерности'],
+      ['mine', 'Мои заметки'],
+      ['map', 'Карта'],
+      ['codes', 'Обмен'],
+    ];
+    let body = '';
+    if (tab === 'notes') {
+      body = mem.data.notes.length
+        ? mem.data.notes.map((id) => `<div class="entry"><button class="link" data-note="${id}">${esc(g.story.note(id).title)}</button></div>`).join('')
+        : '<div class="empty">Найденные записки, документы и файлы появятся здесь.</div>';
+    } else if (tab === 'obs') {
+      body = mem.data.observations.length
+        ? [...mem.data.observations].reverse().map((o) => `<div class="entry"><span class="when">${formatTime(o.t)}</span>${esc(o.text)}</div>`).join('')
+        : '<div class="empty">Здесь будет то, что я заметил. Без выводов — только факты.</div>';
+    } else if (tab === 'rules') {
+      const found = g.rules.rules.filter((r) => mem.rule(r.id).done);
+      body = found.length
+        ? found.map((r) => `<div class="entry"><div class="title">${esc(r.title)}</div>${esc(r.hypothesis)}</div>`).join('') + `<div class="empty" style="margin-top:14px">Догадок: ${found.length}. Сколько их всего — неизвестно.</div>`
+        : '<div class="empty">Пока я не понимаю, по каким правилам живёт это место. Но правила есть.</div>';
+    } else if (tab === 'mine') {
+      body = `<textarea class="notes" id="pnotes" placeholder="Записывайте догадки, коды, номера, маршруты…">${esc(mem.data.playerNotes)}</textarea>`;
+    } else if (tab === 'map') {
+      body = `<div class="mapwrap"><div class="lv"><button class="btn" data-lv="0">Этаж 0</button><button class="btn" data-lv="-1">Этаж −1</button>${mem.visited('void') ? '<button class="btn" data-lv="Ø">Этаж Ø</button>' : ''}</div><canvas id="mapc" width="900" height="560"></canvas><div class="empty">На карте — только то, где я был. Некоторые комнаты не помещаются туда, где я их нашёл.</div></div>`;
+    } else if (tab === 'codes') {
+      body = this.codesHTML();
+    }
+    const html = `<div class="panel" style="width:min(900px,95vw)"><header>Журнал<button class="x" data-close>×</button></header>
+      <div class="tabs">${tabs.map(([id, n]) => `<button class="tab ${id === tab ? 'on' : ''}" data-tab="${id}">${n}</button>`).join('')}</div>
+      <div class="body" style="min-height:360px">${body}</div></div>`;
+    const el = this.openModal('journal', html, back);
+    el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => this.showJournal(b.dataset.tab, back)));
+    el.querySelectorAll('[data-note]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const n = g.story.note(b.dataset.note);
+        this.showNote(n.title, n.text);
+      })
+    );
+    const ta = $('#pnotes', el);
+    if (ta) {
+      ta.addEventListener('input', () => (mem.data.playerNotes = ta.value));
+      ta.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+    if (tab === 'map') {
+      const draw = (lv) => this.drawMap($('#mapc', el), lv);
+      el.querySelectorAll('[data-lv]').forEach((b) => b.addEventListener('click', () => draw(b.dataset.lv)));
+      const cz = g.currentZone;
+      draw(cz && cz.map ? cz.map.level : '0');
+    }
+    if (tab === 'codes') this.bindCodes(el, () => this.showJournal('codes', back));
+  }
+
+  drawMap(canvas, level) {
+    const g = this.game;
+    const mem = g.mem;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0a0c0c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const rects = [];
+    for (const z of g.builder.zones) {
+      if (!z.map || z.map.level !== level) continue;
+      if (!mem.visited(z.memoryId) && z.memoryId !== 'elevator') continue;
+      if (z.memoryId === 'elevator' && !mem.visited('elevator')) continue;
+      const r = z.map.x0 !== undefined ? z.map : z;
+      rects.push({ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, z, impossible: z.map.x0 !== undefined });
+    }
+    if (!rects.length) {
+      ctx.fillStyle = '#5a625a';
+      ctx.font = '18px Consolas';
+      ctx.fillText('Я здесь ещё не был.', 30, 50);
+      return;
+    }
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (const r of rects) {
+      x0 = Math.min(x0, r.x0);
+      x1 = Math.max(x1, r.x1);
+      z0 = Math.min(z0, r.z0);
+      z1 = Math.max(z1, r.z1);
+    }
+    const pad = 30;
+    const sc = Math.min((canvas.width - pad * 2) / (x1 - x0 || 1), (canvas.height - pad * 2) / (z1 - z0 || 1));
+    const ox = pad + (canvas.width - pad * 2 - (x1 - x0) * sc) / 2;
+    const oz = pad + (canvas.height - pad * 2 - (z1 - z0) * sc) / 2;
+    const X = (x) => ox + (x - x0) * sc;
+    const Z = (z) => oz + (z - z0) * sc;
+    const cur = g.currentZone;
+    for (const r of rects) {
+      const isCur = cur && cur.memoryId === r.z.memoryId && cur === r.z;
+      ctx.fillStyle = r.impossible ? 'rgba(180,120,90,0.16)' : isCur ? 'rgba(200,220,200,0.18)' : 'rgba(200,210,200,0.07)';
+      ctx.strokeStyle = r.impossible ? 'rgba(220,150,110,0.7)' : 'rgba(200,210,200,0.45)';
+      ctx.lineWidth = 1.5;
+      if (r.impossible) ctx.setLineDash([6, 4]);
+      ctx.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
+      ctx.strokeRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
+      ctx.setLineDash([]);
+      if ((r.x1 - r.x0) * sc > 50 && (r.z1 - r.z0) * sc > 18) {
+        ctx.fillStyle = r.impossible ? '#d8a080' : '#9aa49a';
+        ctx.font = '13px Consolas';
+        ctx.fillText(r.z.name, X(r.x0) + 5, Z(r.z0) + 16);
+      }
+    }
+    // игрок
+    if (cur && cur.map && cur.map.level === level) {
+      const p = g.player.pos;
+      let px = p.x;
+      let pz = p.z;
+      if (cur.map.x0 !== undefined) {
+        px = cur.map.x0 + ((p.x - cur.x0) / (cur.x1 - cur.x0)) * (cur.map.x1 - cur.map.x0);
+        pz = cur.map.z0 + ((p.z - cur.z0) / (cur.z1 - cur.z0)) * (cur.map.z1 - cur.map.z0);
+      }
+      ctx.fillStyle = '#e8f0e4';
+      ctx.beginPath();
+      ctx.arc(X(px), Z(pz), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#e8f0e4';
+      ctx.beginPath();
+      ctx.moveTo(X(px), Z(pz));
+      ctx.lineTo(X(px) - Math.sin(g.player.yaw) * 14, Z(pz) - Math.cos(g.player.yaw) * 14);
+      ctx.stroke();
+    }
+  }
+
+  // ── коды открытий ─────────────────────────────────────────────────────────
+  codesHTML() {
+    const g = this.game;
+    const mine = g.inGame ? g.mem.data.codes : [];
+    const foreign = g.profile.foreignCodes;
+    const mineIds = new Set(mine.map((c) => c.id));
+    return `<div class="codes">
+      <div style="font-size:14px;color:var(--dim);line-height:1.6;margin-bottom:10px">Каждое открытие даёт код. Сравнивайте их с другими игроками: у каждого свой мир, и одни и те же правила проявляются по-разному. Код подсказывает, ЧТО нашли, но не КАК.</div>
+      ${g.inGame ? `<h3>Мои открытия · мир № ${esc(g.worldTag())}</h3>${mine.length ? mine.map((c) => `<div class="entry"><span class="mine">${c.code}</span> — ${esc(DISCOVERIES.find((d) => d.id === c.id)?.hint || '')}</div>`).join('') : '<div class="empty">Пока ни одного.</div>'}` : ''}
+      <h3>Ввести чужой код</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="code" id="code-in" placeholder="NS-XXXX-XXXX" maxlength="14"><button class="btn" id="code-add">Проверить</button><span id="code-msg" style="font-size:13px;color:var(--dim)"></span></div>
+      <h3>Чужие открытия</h3>
+      ${foreign.length ? foreign.map((c) => `<div class="entry"><span class="mine">${c.code}</span> · мир № ${esc(c.world)} — ${esc(c.hint)} ${g.inGame ? (mineIds.has(c.id) ? '<span style="color:var(--dim)">(у меня тоже)</span>' : '<span style="color:var(--warn)">(у меня — ещё нет)</span>') : ''}</div>`).join('') : '<div class="empty">Пока нет.</div>'}
+    </div>`;
+  }
+
+  bindCodes(el, rerender) {
+    const g = this.game;
+    const inp = $('#code-in', el);
+    inp.addEventListener('keydown', (e) => e.stopPropagation());
+    $('#code-add', el).addEventListener('click', () => {
+      const r = parseCode(inp.value);
+      const msg = $('#code-msg', el);
+      if (!r.ok) {
+        msg.textContent = r.error;
+        msg.style.color = 'var(--warn)';
+        return;
+      }
+      if (!g.profile.foreignCodes.some((c) => c.code === r.code)) {
+        g.profile.foreignCodes.push({ code: r.code, id: r.id, hint: r.hint, world: r.world });
+        g.saveProfile();
+      }
+      rerender();
+    });
+  }
+
+  showCodesScreen(back) {
+    const html = `<div class="panel"><header>Коды открытий<button class="x" data-close>×</button></header><div class="body">${this.codesHTML()}</div></div>`;
+    const el = this.openModal('codes', html, back);
+    this.bindCodes(el, () => this.showCodesScreen(back));
+  }
+
+  // ── терминал ──────────────────────────────────────────────────────────────
+  openTerminal(title, screen) {
+    const html = `<div class="term"><div class="title">${esc(title)}</div><div class="out" id="tout"></div><div class="opts" id="topts"></div></div>`;
+    this.openModal('terminal', html);
+    this.renderTerm(screen);
+  }
+
+  renderTerm(screen) {
+    if (!screen) {
+      this.termTyping = false;
+      this.closeModal();
+      return;
+    }
+    const out = $('#tout', this.el.modal);
+    const opts = $('#topts', this.el.modal);
+    if (!out) return;
+    opts.innerHTML = '';
+    out.textContent = '';
+    const text = screen.body;
+    let i = 0;
+    this.termTyping = true;
+    this.termSkip = false;
+    const showOptions = () => {
+      this.termTyping = false;
+      out.innerHTML = esc(text) + '<span class="cursor"></span>';
+      opts.innerHTML = screen.options.map((o, k) => `<button class="opt" data-i="${k}">${k + 1}. ${esc(o.label)}</button>`).join('');
+      opts.querySelectorAll('.opt').forEach((b) => b.addEventListener('click', () => this.termChoose(screen, +b.dataset.i)));
+      this.termScreen = screen;
+    };
+    const step = () => {
+      if (this.modal !== 'terminal') return;
+      if (this.termSkip || i >= text.length) return showOptions();
+      i = Math.min(text.length, i + 3);
+      out.textContent = text.slice(0, i);
+      if (i % 9 === 0) this.game.audio.play('type');
+      setTimeout(step, 16);
+    };
+    step();
+  }
+
+  termChoose(screen, i) {
+    const o = screen.options[i];
+    if (!o) return;
+    this.game.audio.play('beep');
+    this.termScreen = null;
+    let next = null;
+    try {
+      next = o.run();
+    } catch (err) {
+      console.error('[terminal]', err);
+    }
+    if (this.modal !== 'terminal') return; // финал мог закрыть окно
+    this.renderTerm(next);
+  }
+
+  // ── кодовый замок ─────────────────────────────────────────────────────────
+  openKeypad(label, len, onSubmit) {
+    const html = `<div class="keypad"><div class="lbl">${esc(label)}</div><div class="disp" id="kd">${'_'.repeat(len)}</div><div class="grid">
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-n="${n}">${n}</button>`).join('')}
+      <button data-n="C">C</button><button data-n="0">0</button><button data-n="OK">⏎</button></div>
+      <div style="text-align:center;margin-top:12px"><button class="btn" data-close>Отойти [Esc]</button></div></div>`;
+    const el = this.openModal('keypad', html);
+    let val = '';
+    const disp = $('#kd', el);
+    const render = () => (disp.textContent = val.padEnd(len, '_'));
+    this.keypadInput = (n) => {
+      disp.classList.remove('err');
+      if (n === 'C') val = '';
+      else if (n === 'OK') {
+        if (val.length < len) return;
+        if (onSubmit(val)) {
+          disp.textContent = 'ОТКРЫТО';
+          this.keypadInput = null;
+          setTimeout(() => this.modal === 'keypad' && this.closeModal(), 700);
+          return;
+        }
+        disp.classList.add('err');
+        disp.textContent = 'ОШИБКА';
+        val = '';
+        return;
+      } else if (val.length < len) {
+        val += n;
+        this.game.audio.play('beep');
+        if (val.length === len) {
+          render();
+          setTimeout(() => this.keypadInput && this.keypadInput('OK'), 250);
+          return;
+        }
+      }
+      render();
+    };
+    el.querySelectorAll('[data-n]').forEach((b) => b.addEventListener('click', () => this.keypadInput && this.keypadInput(b.dataset.n)));
+    this.onModalClose = () => (this.keypadInput = null);
+  }
+
+  // ── выбор (лифт) ──────────────────────────────────────────────────────────
+  openChoice(title, options) {
+    const html = `<div class="term" style="width:min(380px,92vw)"><div class="title">${esc(title)}</div><div class="opts" style="padding-top:16px">${options
+      .map((o, i) => `<button class="opt" data-i="${i}">${i + 1}. ${esc(o.label)}</button>`)
+      .join('')}<button class="opt" data-close>${options.length + 1}. Отмена</button></div></div>`;
+    const el = this.openModal('choice', html);
+    this.choiceOptions = options;
+    el.querySelectorAll('[data-i]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const o = options[+b.dataset.i];
+        this.closeModal();
+        o.run();
+      })
+    );
+  }
+
+  // ── осмотр ────────────────────────────────────────────────────────────────
+  showExamine(item) {
+    const ex = this.el.examine;
+    if (!item) return ex.classList.add('hidden');
+    $('.t', ex).textContent = ITEMS[item].name;
+    $('.d', ex).textContent = ITEMS[item].desc;
+    ex.classList.remove('hidden');
+  }
+
+  // ── финал ─────────────────────────────────────────────────────────────────
+  showEnding(data, stats, code) {
+    const el = this.el.ending;
+    el.innerHTML = `<div class="wrap"><h2>${esc(data.title)}</h2>${data.p.map((t, i) => `<p style="animation-delay:${0.8 + i * 1.6}s">${esc(t)}</p>`).join('')}
+      <div class="stats" style="animation-delay:${1.5 + data.p.length * 1.6}s">${stats.map(esc).join('<br>')}<br><br>Код исхода: <span style="color:var(--accent);user-select:text">${esc(code || '')}</span><br><br><button class="btn" id="end-menu">В главное меню</button></div></div>`;
+    el.classList.remove('hidden');
+    this.showHUD(false);
+    $('#end-menu', el).addEventListener('click', () => this.game.toMenu());
+  }
+}
