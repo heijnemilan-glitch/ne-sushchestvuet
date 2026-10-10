@@ -1,5 +1,5 @@
-// ÐŸÑ€Ð¾Ñ†ÐµÐ´ÑƒÑ€Ð½Ñ‹Ðµ Ñ‚ÐµÐºÑÑ‚ÑƒÑ€Ñ‹ (canvas) Ð¸ Ð¼Ð°Ñ‚ÐµÑ€Ð¸Ð°Ð»Ñ‹. Ð‘ÐµÐ· Ð²Ð½ÐµÑˆÐ½Ð¸Ñ… Ñ„Ð°Ð¹Ð»Ð¾Ð² â€” Ð¸Ð³Ñ€Ð° Ð¿Ð¾Ð»Ð½Ð¾ÑÑ‚ÑŒÑŽ Ð°Ð²Ñ‚Ð¾Ð½Ð¾Ð¼Ð½Ð°.
-// Ð¢ÐµÐºÑÑ‚ÑƒÑ€Ñ‹ Ð±ÐµÑÑˆÐ¾Ð²Ð½Ñ‹Ðµ; UV Ð²Ñ‹Ñ‡Ð¸ÑÐ»ÑÑŽÑ‚ÑÑ Ð² Ð¼ÐµÑ‚Ñ€Ð°Ñ… (ÑÐ¼. builder.js), Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ Ð¼Ð°ÑÑˆÑ‚Ð°Ð± Ð²ÐµÐ·Ð´Ðµ Ð¾Ð´Ð¸Ð½Ð°ÐºÐ¾Ð²Ñ‹Ð¹.
+// Процедурные текстуры (canvas) и материалы. Без внешних файлов — игра полностью автономна.
+// Текстуры бесшовные; UV вычисляются в метрах (см. builder.js), поэтому масштаб везде одинаковый.
 
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rng.js';
@@ -50,7 +50,7 @@ function canvasOf(size) {
   return c;
 }
 
-// ÐŸÐ¾Ð¿Ð¸ÐºÑÐµÐ»ÑŒÐ½Ð°Ñ Ð·Ð°Ð»Ð¸Ð²ÐºÐ°: fn(u, v) -> [r, g, b] Ð² 0..255
+// Попиксельная заливка: fn(u, v) -> [r, g, b] в 0..255
 function pixels(size, fn) {
   const c = canvasOf(size);
   const ctx = c.getContext('2d');
@@ -94,7 +94,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
   const n = fbmFactory(1337);
   const n2 = fbmFactory(4242);
 
-  // â”€ Ð±ÐµÑ‚Ð¾Ð½: Ð¿ÑÑ‚Ð½Ð°, Ð¿Ð¾Ð´Ñ‚Ñ‘ÐºÐ¸, Ð¼ÐµÐ»ÐºÐ¸Ðµ Ð¿Ð¾Ñ€Ñ‹
+  // ─ бетон: пятна, подтёки, мелкие поры
   const concrete = (base, dark) =>
     pixels(S, (u, v) => {
       const a = n(u, v);
@@ -108,7 +108,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
   const concreteC = concrete([150, 147, 140], 0.6);
   const concreteDarkC = concrete([98, 98, 96], 0.8);
 
-  // â”€ Ð¿Ð»Ð¸Ñ‚ÐºÐ° Ð¿Ð¾Ð»Ð°: ÑˆÐ²Ñ‹, Ð½ÐµÑ€Ð¾Ð²Ð½Ñ‹Ð¹ Ñ‚Ð¾Ð½ ÐºÐ°Ð¶Ð´Ð¾Ð¹ Ð¿Ð»Ð¸Ñ‚ÐºÐ¸
+  // ─ плитка пола: швы, неровный тон каждой плитки
   const tilesC = (() => {
     const c = pixels(S, (u, v) => {
       const tx = Math.floor(u * 4);
@@ -132,7 +132,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return c;
   })();
 
-  // â”€ Ð±ÐµÐ»Ð°Ñ ÐºÐ°Ñ„ÐµÐ»ÑŒÐ½Ð°Ñ Ð¿Ð»Ð¸Ñ‚ÐºÐ° Ð»Ð°Ð±Ð¾Ñ€Ð°Ñ‚Ð¾Ñ€Ð¸Ð¸
+  // ─ белая кафельная плитка лаборатории
   const whiteTileC = (() => {
     const c = pixels(S, (u, v) => {
       const k = 0.88 + n(u, v) * 0.14 - Math.pow(n2(u, v, 3), 4) * 0.35;
@@ -153,7 +153,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return c;
   })();
 
-  // â”€ Ð»Ð¸Ð½Ð¾Ð»ÐµÑƒÐ¼ Ð² ÐºÐ¾Ð¼Ð½Ð°Ñ‚Ðµ Ð¿Ñ€Ð¾Ð±ÑƒÐ¶Ð´ÐµÐ½Ð¸Ñ: Ð±Ð»ÐµÐ´Ð½Ð¾-Ð·ÐµÐ»Ñ‘Ð½Ñ‹Ð¹, Ñ Ð¿Ð¾Ñ‚Ñ‘Ñ€Ñ‚Ð¾ÑÑ‚ÑÐ¼Ð¸
+  // ─ линолеум в комнате пробуждения: бледно-зелёный, с потёртостями
   const linoC = pixels(S, (u, v) => {
     const a = n(u, v);
     const wear = Math.pow(n2(u, v, 4), 2);
@@ -161,7 +161,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return col([104, 120, 108], k);
   });
 
-  // â”€ ÐºÑ€Ð°ÑˆÐµÐ½Ð°Ñ ÑÑ‚ÐµÐ½Ð°: Ð²ÐµÑ€Ñ… ÑÐ²ÐµÑ‚Ð»Ñ‹Ð¹, Ð½Ð¸Ð¶Ð½ÑÑ Ð¿Ð°Ð½ÐµÐ»ÑŒ Ñ‚ÐµÐ¼Ð½ÐµÐµ (ÐºÐ»Ð°ÑÑÐ¸ÐºÐ° Ð³Ð¾ÑÑƒÑ‡Ñ€ÐµÐ¶Ð´ÐµÐ½Ð¸Ð¹)
+  // ─ крашеная стена: верх светлый, нижняя панель темнее (классика госучреждений)
   const paintC = (() => {
     const c = pixels(S, (u, v) => {
       const a = n(u, v);
@@ -176,7 +176,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return c;
   })();
 
-  // â”€ Ð¿Ð¾Ñ‚Ð¾Ð»Ð¾Ñ‡Ð½Ñ‹Ðµ Ð¿Ð°Ð½ÐµÐ»Ð¸ Â«ÐÑ€Ð¼ÑÑ‚Ñ€Ð¾Ð½Ð³Â»
+  // ─ потолочные панели «Армстронг»
   const ceilingC = (() => {
     const c = pixels(S, (u, v) => {
       const dots = 1 - Math.max(0, n2(u * 4 % 1, v * 4 % 1, 5) - 0.6) * 0.5;
@@ -198,14 +198,14 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return c;
   })();
 
-  // â”€ Ð´ÐµÑ€ÐµÐ²Ð¾ (ÑÑ‚Ð¾Ð»Ñ‹, Ð¿Ð¾Ð»ÐºÐ¸)
+  // ─ дерево (столы, полки)
   const woodC = pixels(S, (u, v) => {
     const ring = Math.sin((v * 22 + n(u * 0.2, v, 3) * 6) * Math.PI) * 0.5 + 0.5;
     const k = 0.7 + ring * 0.18 + n2(u, v) * 0.15;
     return col([120, 86, 58], k);
   });
 
-  // â”€ Ð¼ÐµÑ‚Ð°Ð»Ð»: ÑˆÐ»Ð¸Ñ„Ð¾Ð²ÐºÐ° + Ñ€ÐµÐ´ÐºÐ°Ñ Ñ€Ð¶Ð°Ð²Ñ‡Ð¸Ð½Ð°
+  // ─ металл: шлифовка + редкая ржавчина
   const metalC = pixels(S, (u, v) => {
     const brush = n2(u * 0.05, v, 5);
     const rust = Math.pow(n(u, v, 4), 5) * 2.2;
@@ -213,7 +213,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return [mix(118 * k, 120, rust), mix(124 * k, 70, rust), mix(128 * k, 40, rust)];
   });
 
-  // â”€ ÐºÐ¾Ð²Ñ€Ð¾Ð»Ð¸Ð½ Ð½Ð°Ð±Ð»ÑŽÐ´Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾Ð¹
+  // ─ ковролин наблюдательной
   const carpetC = pixels(S, (u, v) => {
     const k = 0.75 + n2(u * 16 % 1, v * 16 % 1, 2) * 0.3 + n(u, v, 3) * 0.1;
     return col([62, 58, 72], k);
@@ -269,7 +269,7 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
   return mats;
 }
 
-// Ð¢ÐµÐºÑÑ‚ÑƒÑ€Ð°-Ð½Ð°Ð´Ð¿Ð¸ÑÑŒ (Ñ‚Ð°Ð±Ð»Ð¸Ñ‡ÐºÐ¸, Ð½Ð¾Ð¼ÐµÑ€Ð° ÑÑ‚Ð°Ð¶ÐµÐ¹, ÑÐºÑ€Ð°Ð½Ñ‹ Ñ‚ÐµÑ€Ð¼Ð¸Ð½Ð°Ð»Ð¾Ð², Ð¿Ð»Ð°ÐºÐ°Ñ‚Ñ‹).
+// Текстура-надпись (таблички, номера этажей, экраны терминалов, плакаты).
 export function textTexture(lines, { w = 256, h = 128, bg = '#1a1c1c', fg = '#d8d8cc', font = 'bold 48px Consolas, monospace', align = 'center', pad = 12, noise = 0 } = {}) {
   const c = canvasOf(1);
   c.width = w;
