@@ -12,7 +12,7 @@ const out = join(root, 'dist', 'bundle.js');
 
 execFileSync(
   esbuild,
-  [join(root, 'src', 'main.js'), '--bundle', '--format=iife', '--target=es2020', `--outfile=${out}`, ...(dev ? ['--sourcemap=inline'] : ['--minify']), '--log-level=warning', '--legal-comments=none'],
+  [join(root, 'src', 'main.js'), '--bundle', '--format=iife', '--target=es2020', `--outfile=${out}`, ...(dev ? ['--sourcemap=inline'] : ['--minify']), '--log-level=warning', '--legal-comments=none', '--loader:.glb=binary'],
   { stdio: 'inherit', cwd: root }
 );
 

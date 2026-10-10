@@ -13,42 +13,29 @@
 
 import * as THREE from 'three';
 import { rayBox } from './interaction.js';
+import { makeCreature } from '../world/models.js';
 
-function humanoid(mat, height = 1.8) {
-  const g = new THREE.Group();
-  const k = height / 1.8;
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17 * k, 0.13 * k, 0.95 * k, 10), mat);
-  body.position.y = 1.0 * k;
-  const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.46 * k, 0.12 * k, 0.2 * k), mat);
-  shoulders.position.y = 1.43 * k;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12 * k, 12, 10), mat);
-  head.position.y = 1.64 * k;
-  head.scale.set(0.9, 1.15, 0.95);
-  const legs = [];
-  for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * k, 0.05 * k, 0.6 * k, 8), mat);
-    leg.position.set(s * 0.08 * k, 0.3 * k, 0);
-    legs.push(leg);
-    g.add(leg);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * k, 0.04 * k, 0.72 * k, 8), mat);
-    arm.position.set(s * 0.25 * k, 1.05 * k, 0);
-    g.add(arm);
-  }
-  g.add(body, shoulders, head);
-  g.userData.head = head;
-  g.userData.legs = legs;
-  g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
-  });
-  return g;
+// Настоящая 3D-модель со скелетом (см. world/models.js). userData.head — кость головы.
+function creature(kind) {
+  const c = makeCreature(kind);
+  c.holder.userData.head = c.head || new THREE.Object3D();
+  c.holder.userData.legs = [new THREE.Object3D(), new THREE.Object3D()];
+  c.holder.userData.c = c;
+  return c;
 }
 
 export class Observer {
   constructor(game) {
     this.game = game;
-    this.mat = game.mats.observer.clone();
-    this.mat.transparent = true;
-    this.mesh = humanoid(this.mat, 2.25);
+    this.c = creature('observer');
+    this.mat = this.c.mat;
+    this.mesh = this.c.holder;
+    // стоит почти неподвижно: замедленная поза ожидания
+    const idle = this.c.actions.idle || Object.values(this.c.actions)[0];
+    if (idle) {
+      idle.play();
+      idle.timeScale = 0.12;
+    }
     this.mesh.visible = false;
     game.scene.add(this.mesh);
     this.state = 'dormant';
@@ -73,6 +60,7 @@ export class Observer {
   update(dt) {
     const g = this.game;
     const zone = g.currentZone;
+    if (this.mesh.visible) this.c.mixer.update(dt);
     if (zone && zone.id === 'void') return this.updateVoid(dt);
     if (this.state === 'void') this.hide();
     this.cooldown -= dt;
@@ -102,7 +90,8 @@ export class Observer {
       const lit = g.flashlightOn && visible && angle < 0.2 && dist < 16;
       // голова медленно поворачивается к игроку, но тело — к секрету
       const head = this.mesh.userData.head;
-      head.rotation.y += ((this.t > 3 ? 0.6 : 0) - head.rotation.y) * dt;
+      head.rotation.y = this.t > 3 ? Math.min(0.7, (this.t - 3) * 0.25) : 0;
+      head.rotation.z = Math.sin(this.t * 0.7) * 0.12;
       if (this.gaze > 0.9 || lit || dist < 6.5) this.vanish(true);
       else if (this.t > 24) this.vanish(false);
       return;
@@ -230,8 +219,9 @@ export class Observer {
 export class Copy {
   constructor(game) {
     this.game = game;
-    this.mat = game.mats.copy.clone();
-    this.mesh = humanoid(this.mat, 1.8);
+    this.c = creature('copy');
+    this.mat = this.c.mat;
+    this.mesh = this.c.holder;
     this.mesh.visible = false;
     game.scene.add(this.mesh);
     this.state = 'absent';
@@ -377,9 +367,16 @@ export class Copy {
     const moved = Math.hypot(s.x - prev.x, s.z - prev.z);
     if (moved > 0.001 && moved < 1) this.mesh.rotation.y = Math.atan2(s.x - prev.x, s.z - prev.z);
     this.walk += moved * 5;
-    const legs = this.mesh.userData.legs;
-    legs[0].rotation.x = Math.sin(this.walk) * 0.4;
-    legs[1].rotation.x = -Math.sin(this.walk) * 0.4;
+    // анимация шага по скорости движения
+    const speed = dt > 0 ? moved / dt : 0;
+    const want = speed > 0.3 ? (speed > 3 ? 'run' : 'walk') : 'idle';
+    const a = this.c.actions[want];
+    if (a && this.curAnim !== a) {
+      a.reset().fadeIn(0.2).play();
+      if (this.curAnim) this.curAnim.fadeOut(0.2);
+      this.curAnim = a;
+    }
+    this.c.mixer.update(dt);
   }
 
   dissolve() {

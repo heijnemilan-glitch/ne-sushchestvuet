@@ -112,6 +112,7 @@ export class Door extends Interactable {
       builder.groupOf(o.zone).add(lamp);
       this.lamp = lamp;
     }
+    this.collider.doorRef = this; // монстр открывает двери сам
     this.register(this.pivot);
     game.world.initDoor(o.id, { open: !!o.open, locked: !!o.locked });
     this.angle = 0;

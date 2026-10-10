@@ -61,6 +61,21 @@ export class Player {
   }
 
   update(dt, active) {
+    // в шкафчике: не двигаемся, смотрим только сквозь щели дверцы
+    if (this.hiddenIn) {
+      const h = this.hiddenIn;
+      this.pos.set(h.inside.x, 0, h.inside.z);
+      let d = this.yaw - h.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw = h.yaw + clamp(d, -0.45, 0.45);
+      this.pitch = clamp(this.pitch, -0.25, 0.2);
+      this.vel.set(0, 0, 0);
+      this.moving = false;
+      this.sprinting = false;
+      this.stillTime += dt;
+      this.applyCamera(dt);
+      return;
+    }
     const { f, r, sprint } = active ? this.input() : { f: 0, r: 0, sprint: false };
     const speed = sprint ? 4.0 : 2.3;
     const sin = Math.sin(this.yaw);
@@ -113,7 +128,7 @@ export class Player {
   }
 
   applyCamera(dt) {
-    const bobAmt = this.game.settings.headBob === false ? 0 : 1;
+    const bobAmt = this.game.settings.headBob === false || this.hiddenIn ? 0 : 1;
     const by = this.moving ? Math.sin(this.bob * 2) * 0.035 * bobAmt : 0;
     const bx = this.moving ? Math.cos(this.bob) * 0.02 * bobAmt : 0;
     this.camera.position.set(this.pos.x + Math.cos(this.yaw) * bx, this.pos.y + EYE + by, this.pos.z - Math.sin(this.yaw) * bx);

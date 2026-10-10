@@ -39,9 +39,26 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #helpline { position: fixed; right: 18px; bottom: 14px; font-size: 12px; color: var(--dim); opacity: 0.75; text-align: right; line-height: 1.7; }
 #lockhint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 22px; background: rgba(0,0,0,0.6); border: 1px solid var(--line); font-size: 14px; pointer-events: auto; cursor: pointer; }
 
+/* шкафчик: темнота с горизонтальными щелями */
+#locker-ov { background: repeating-linear-gradient(to bottom, #000 0, #000 7vh, rgba(0,0,0,0.15) 7vh, rgba(0,0,0,0.15) 9.5vh), radial-gradient(ellipse at center, transparent 30%, #000 85%); }
+#locker-ov .locker-hint { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); font-size: 13px; color: #8b948c; letter-spacing: 0.1em; }
+/* кинематографичный текст */
+#cine { background: #000; display: grid; place-items: center; z-index: 58; transition: opacity 0.9s; }
+#cine.out { opacity: 0; }
+#cine .cine-text { max-width: 760px; padding: 30px; text-align: center; }
+#cine p { font-size: clamp(18px, 2.2vw, 26px); font-weight: 300; letter-spacing: 0.06em; color: #cfd5cc; margin: 0 0 18px; opacity: 0; animation: cinein 1.4s forwards; }
+#cine.red { background: radial-gradient(ellipse at center, #2a0303 0%, #000 70%); }
+#cine.red p { color: #e8c8c0; font-size: clamp(24px, 3.4vw, 44px); letter-spacing: 0.3em; }
+@keyframes cinein { from { opacity: 0; filter: blur(6px); transform: translateY(6px); } to { opacity: 1; filter: none; transform: none; } }
+/* меню поверх живого 3D-фона */
+#menu.screen.solid { background: linear-gradient(90deg, rgba(3,4,4,0.92) 0%, rgba(3,4,4,0.7) 45%, rgba(3,4,4,0.15) 100%); }
+#menu h1 { animation: glitch 7s infinite; }
+@keyframes glitch { 0%, 92%, 100% { transform: none; text-shadow: none; opacity: 1; } 93% { transform: translateX(-3px); text-shadow: 3px 0 #a00, -3px 0 #0aa; } 94% { transform: translateX(4px) skewX(8deg); opacity: 0.7; } 95% { transform: none; text-shadow: -2px 0 #a00; } 96% { opacity: 0.2; } 97% { opacity: 1; } }
+
 /* слои: окна всегда поверх меню и экрана финала */
 #menu, #ending { z-index: 40; }
 #modal { z-index: 50; }
+#locker-ov { z-index: 5; }
 #lockhint { z-index: 55; }
 #fade { z-index: 60; }
 

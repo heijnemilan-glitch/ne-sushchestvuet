@@ -22,13 +22,17 @@ import { Builder } from './world/builder.js';
 import { Level } from './world/level.js';
 import { itemModel } from './world/props.js';
 import { UI } from './ui/ui.js';
+import { PostFX } from './render/post.js';
+import { loadModels } from './world/models.js';
+import { Monster } from './systems/monster.js';
 
 const QUALITY = {
   low: { lights: 4, dust: 0, antialias: false, shadows: false },
-  medium: { lights: 6, dust: 220, antialias: true, shadows: false },
-  high: { lights: 8, dust: 420, antialias: true, shadows: true },
+  medium: { lights: 6, dust: 260, antialias: false, shadows: false },
+  high: { lights: 8, dust: 480, antialias: false, shadows: true },
 };
-const FOG = { color: 0x050606, density: 0.065 };
+const FOG = { color: 0x040505, density: 0.075 };
+const AMBIENT = 0.3;
 
 class Game {
   constructor() {
@@ -49,6 +53,23 @@ class Game {
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
     this.handleBoot();
+    // 3D-модели персонажей встроены в файл; после загрузки за меню появляется живой комплекс
+    this.models = loadModels()
+      .then(() => {
+        if (this.state === 'menu' && !this.scene) this.menuWorld();
+      })
+      .catch((err) => console.error('[models]', err));
+  }
+
+  // Фон главного меню: настоящий уровень, камера медленно плывёт по тёмному коридору.
+  menuWorld() {
+    try {
+      this.buildWorld({ memory: WorldMemory.fresh(7), world: WorldState.fresh(), inventory: null, player: { x: 0, y: 0, z: -2, yaw: 0, pitch: 0 } });
+      this.menuCam = { t: 0 };
+      this.flashlightOn = false;
+    } catch (err) {
+      console.error('[menu world]', err);
+    }
   }
 
   initRenderer() {
@@ -80,6 +101,7 @@ class Game {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    if (this.post) this.post.setSize(innerWidth, innerHeight, this.renderer.getPixelRatio());
   }
 
   // ── мир ───────────────────────────────────────────────────────────────────
@@ -111,7 +133,7 @@ class Game {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(FOG.color);
     this.scene.fog = new THREE.FogExp2(FOG.color, FOG.density);
-    this.hemi = new THREE.HemisphereLight(0x8a969c, 0x1a1816, 0.5);
+    this.hemi = new THREE.HemisphereLight(0x8a969c, 0x1a1816, AMBIENT);
     this.scene.add(this.hemi);
     this.builder = new Builder(this.scene, this.mats);
     this.interaction = new InteractionSystem(this);
@@ -132,9 +154,21 @@ class Game {
       cue: (name, data) => bus.emit('cue', { name, ...data }),
     });
     this.rules.registerAll(RULES);
+    this.monster = new Monster(this);
     const q = QUALITY[this.settings.quality] || QUALITY.medium;
     this.lightPool = new LightPool(this.scene, this.builder.lights, q.lights);
+    if (this.flashlight) {
+      this.camera.remove(this.flashlight);
+      this.camera.remove(this.flashlight.target);
+    }
     this.flashlight = createFlashlight(this.camera, this.scene, this.settings.quality);
+    if (!this.post) {
+      this.post = new PostFX(this.renderer, this.scene, this.camera, this.settings.quality);
+      this.post.setSize(innerWidth, innerHeight, this.renderer.getPixelRatio());
+    } else this.post.setScene(this.scene, this.camera);
+    this.player.hiddenIn = null;
+    this.ui.showLocker(false);
+    this.menuCam = null;
     this.flashlightOn = !!payload.flashlightOn;
     this.dust = q.dust ? new Dust(this.scene, q.dust) : null;
     this.currentZone = null;
@@ -199,12 +233,13 @@ class Game {
   }
 
   // ── игра: новая / продолжить / загрузить ──────────────────────────────────
-  newGame(slot) {
+  async newGame(slot) {
     this.audio.init();
     const seed = newSeed();
     this.slot = slot || '1';
     this.profile.runs = (this.profile.runs || 0) + 1;
     this.saveProfile();
+    await this.models;
     this.buildWorld({
       memory: WorldMemory.fresh(seed),
       world: WorldState.fresh(),
@@ -212,8 +247,14 @@ class Game {
       player: { x: 0.9, y: 0, z: 4.4, yaw: 0.35, pitch: -0.05 },
     });
     this.startPlaying(true);
-    this.ui.hint('Ты не помнишь, как здесь оказался.', 5);
-    setTimeout(() => this.inGame && this.ui.hint('На столе — терминал. Рядом лежит фонарь.', 5), 6000);
+    // вступление
+    this.paused = true;
+    this.audio.play('scream_far');
+    await this.ui.cinematic(['Сектор 0.', 'Ты не помнишь, как здесь оказался.', 'За стеной что-то ходит.', 'Оно пока не знает, что ты проснулся.'], { hold: 1.4 });
+    if (this.state !== 'playing') return;
+    this.paused = !!this.ui.modal;
+    this.lockPointer();
+    setTimeout(() => this.inGame && this.ui.hint('На столе — терминал. Рядом лежит фонарь.', 5), 1500);
   }
 
   continueGame() {
@@ -221,8 +262,9 @@ class Game {
     if (slot) this.loadSlot(slot);
   }
 
-  loadSlot(slot) {
+  async loadSlot(slot) {
     this.audio.init();
+    await this.models;
     const r = this.saves.load(slot);
     if (!r.ok) {
       this.ui.toast(r.error);
@@ -292,7 +334,11 @@ class Game {
     this.examining = null;
     document.exitPointerLock && document.exitPointerLock();
     this.ui.showLockHint(false);
+    this.ui.showLocker(false);
+    this.audio.setChase(0);
+    this.fear = 0;
     this.ui.showMenu();
+    this.models.then(() => this.state === 'menu' && this.menuWorld());
   }
 
   // Загрузка с флагом из прошлой сессии вкладки (например, после перезапуска).
@@ -430,6 +476,10 @@ class Game {
     }
     if (e.repeat) return;
     this.player.keys.add(e.code);
+    if (this.player.hiddenIn) {
+      if (e.code === k.interact) this.toggleHide(this.player.hiddenIn);
+      return;
+    }
     if (e.code === k.interact) this.interaction.interact();
     else if (e.code === k.flashlight) this.toggleFlashlight();
     else if (e.code === k.inventory || e.code === 'KeyI') ui.showInventory();
@@ -585,12 +635,126 @@ class Game {
     }
     try {
       if (this.state === 'playing' && !this.paused) this.update(dt);
+      else if (this.state === 'caught') this.updateCaught(dt);
       else if (this.state === 'ending') this.level.update(dt * 0.3, (this.time += dt));
+      else if (this.state === 'menu' && this.menuCam) this.updateMenu(dt);
     } catch (err) {
       console.error('[game] ошибка в кадре:', err);
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.post && this.post.enabled) {
+      this.post.fear = this.fear || 0;
+      this.post.distort = this.fxDistort || 0;
+      this.post.draw(this.time);
+    } else this.renderer.render(this.scene, this.camera);
     if (this.pendingShot) this.takeShot();
+  }
+
+  // Камера в главном меню медленно идёт по коридору; лампы мерцают, впереди — темнота.
+  updateMenu(dt) {
+    this.time += dt;
+    const c = this.menuCam;
+    c.t += dt;
+    const z = -2 - ((c.t * 0.35) % 16);
+    this.player.setPose({ x: Math.sin(c.t * 0.2) * 0.3, y: 0, z, yaw: Math.sin(c.t * 0.13) * 0.12, pitch: -0.03 + Math.sin(c.t * 0.3) * 0.03 });
+    this.player.applyCamera(dt);
+    this.level.cull(this.player.pos);
+    this.lightPool.update(dt, this.player.pos, this.time);
+    this.level.horror.update(dt);
+    if (this.dust) this.dust.update(dt, this.camera.position, this.time);
+    this.fear = 0.15 + Math.max(0, Math.sin(c.t * 0.5)) * 0.1;
+  }
+
+  // ── шкафчики ──────────────────────────────────────────────────────────────
+  toggleHide(locker) {
+    const p = this.player;
+    this.audio.play('locker');
+    if (p.hiddenIn) {
+      const l = p.hiddenIn;
+      p.hiddenIn = null;
+      l.door.visible = true;
+      p.setPose({ x: l.front.x, y: 0, z: l.front.z, yaw: l.yaw, pitch: 0 });
+      this.ui.showLocker(false);
+      return;
+    }
+    p.hiddenIn = locker;
+    locker.door.visible = false;
+    p.yaw = locker.yaw;
+    p.pitch = 0;
+    this.flashlightOn = false;
+    this.ui.showLocker(true);
+    this.mem.count('hid');
+    if (this.mem.get('hid') === 1) this.mem.observe('hid', 'Я спрятался в шкафчик. Сквозь щели видно коридор. Дыхание кажется слишком громким.');
+  }
+
+  // ── поимка ────────────────────────────────────────────────────────────────
+  onCaught(monster, pulledOut) {
+    if (this.state !== 'playing') return;
+    this.state = 'caught';
+    this.caught = { t: 0, monster, pulledOut, done: false };
+    this.player.keys.clear();
+    if (this.player.hiddenIn) {
+      this.player.hiddenIn.door.visible = true;
+      this.player.hiddenIn = null;
+      this.ui.showLocker(false);
+    }
+    this.audio.play('catch');
+    this.audio.setChase(0);
+    this.ui.setPrompt(null);
+    this.mem.count('deaths');
+  }
+
+  updateCaught(dt) {
+    const c = this.caught;
+    c.t += dt;
+    this.time += dt;
+    const m = c.monster;
+    // камеру резко разворачивает к нему, он — вплотную
+    const eye = this.camera.position;
+    const head = new THREE.Vector3(m.pos.x, 1.95, m.pos.z);
+    const want = Math.atan2(-(head.x - eye.x), -(head.z - eye.z));
+    let d = want - this.player.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.player.yaw += d * Math.min(1, dt * 14);
+    this.player.pitch += (Math.atan2(head.y - eye.y, Math.hypot(head.x - eye.x, head.z - eye.z)) - this.player.pitch) * Math.min(1, dt * 10);
+    const toP = new THREE.Vector3(this.player.pos.x - m.pos.x, 0, this.player.pos.z - m.pos.z);
+    if (toP.length() > 0.75) m.pos.addScaledVector(toP.normalize(), dt * 3);
+    m.yaw = Math.atan2(this.player.pos.x - m.pos.x, this.player.pos.z - m.pos.z);
+    m.play('run', 1.6);
+    m.after(dt);
+    this.player.roll = Math.sin(c.t * 40) * 0.03 * Math.max(0, 1 - c.t);
+    this.player.applyCamera(dt);
+    this.fear = c.done ? Math.max(0, this.fear - dt) : 1;
+    if (this.post) this.post.hit = c.done ? Math.max(0, this.post.hit - dt * 2) : Math.min(1, c.t * 2);
+    this.lightPool.update(dt, this.player.pos, this.time);
+    if (c.t > 1.3 && !c.done) {
+      c.done = true;
+      this.ui.fade(true);
+      const deaths = this.mem.get('deaths');
+      const lines = deaths === 1 ? ['ОНО ПОМНИТ ТЕБЯ'] : deaths === 2 ? ['ОНО ПОМНИТ ТЕБЯ', 'ВТОРОЙ РАЗ'] : ['ОНО ПОМНИТ ТЕБЯ', `${deaths}-Й РАЗ`, 'Ты тоже начинаешь помнить'];
+      setTimeout(async () => {
+        if (this.post) this.post.hit = 0;
+        await this.ui.cinematic(lines, { hold: 1.2, red: true });
+        this.respawn();
+      }, 700);
+    }
+  }
+
+  // Возвращение в комнату пробуждения. Предметы остаются; мир помнит смерть.
+  respawn() {
+    if (this.state !== 'caught') return;
+    this.player.setPose({ x: 0.9, y: 0, z: 4.4, yaw: 0.35, pitch: -0.05 });
+    this.player.roll = 0;
+    this.monster.retreat();
+    this.fear = 0;
+    if (this.post) this.post.hit = 0;
+    this.state = 'playing';
+    this.paused = !!this.ui.modal;
+    this.ui.fade(false);
+    this.updateZone(true);
+    const d = this.mem.get('deaths');
+    this.mem.observe(`death_${Math.min(d, 3)}`, d === 1 ? 'Я проснулся в той же комнате. Шея болит. Я помню его лицо — и не помню, было ли у него лицо.' : d === 2 ? 'Снова здесь. Комната та же. Нет — кровать сдвинута. Это я её сдвинул?' : 'Сколько раз я уже просыпался здесь? Кажется, комплекс считает лучше меня.');
+    this.lockPointer();
+    this.autosave();
   }
 
   update(dt) {
@@ -602,7 +766,26 @@ class Game {
     this.updateZone(false);
     this.mem.tick(dt);
     this.entities.update(dt);
+    this.monster.update(dt);
+    if (this.state !== 'playing') return; // поймали в этом кадре
     this.puzzles.update(dt);
+    // страх: сердцебиение, музыка погони, искажения кадра
+    this.fear = this.monster.fear;
+    this.audio.setChase(this.monster.state === 'chase' ? 1 : 0);
+    this.heartTimer = (this.heartTimer || 0) - dt;
+    if (this.fear > 0.18 && this.heartTimer <= 0) {
+      this.heartTimer = 1.15 - this.fear * 0.7;
+      this.audio.play('heartbeat');
+    }
+    // шёпот в темноте, если долго стоять без света
+    this.whisperTimer = (this.whisperTimer ?? 30) - dt;
+    if (this.whisperTimer <= 0) {
+      this.whisperTimer = 25 + Math.random() * 35;
+      if (!this.flashlightOn && this.monster.state !== 'dormant') {
+        const a = Math.random() * Math.PI * 2;
+        this.audio.play('whisper', new THREE.Vector3(this.player.pos.x + Math.cos(a) * 2, 1.6, this.player.pos.z + Math.sin(a) * 2));
+      }
+    }
     if (active) this.interaction.update();
     else this.ui.setPrompt(null);
     // фонарь
@@ -656,7 +839,7 @@ class Game {
     this._fogColor.setHex(zf.color);
     fog.color.lerp(this._fogColor, Math.min(1, dt * 1.5));
     this.scene.background.copy(fog.color);
-    this.hemi.intensity += ((this.currentZone && this.currentZone.id === 'void' ? 1.4 : 0.5) - this.hemi.intensity) * Math.min(1, dt);
+    this.hemi.intensity += ((this.currentZone && this.currentZone.id === 'void' ? 1.4 : AMBIENT) - this.hemi.intensity) * Math.min(1, dt);
   }
 
   updateZone(force) {

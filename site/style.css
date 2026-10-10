@@ -118,7 +118,7 @@ h3 { font-weight: 500; font-size: 19px; margin: 0 0 8px; }
 .shot:hover .cap, .shot:focus-visible .cap { opacity: 1; }
 
 /* персонажи */
-.cast { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 34px; }
+.cast { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 34px; }
 .who { border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; background: linear-gradient(160deg, var(--panel) 0%, var(--bg) 100%); }
 .tag { display: inline-block; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 10px; margin-bottom: 18px; }
 .tag.term { color: var(--accent); border-color: rgba(159, 232, 192, 0.35); }

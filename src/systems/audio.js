@@ -141,6 +141,31 @@ export class AudioManager {
       o.start();
     });
     amb.drone.connect(this.ambientBus);
+    // музыка погони: диссонантный кластер с пульсацией — громкость задаёт setChase()
+    amb.chase = c.createGain();
+    amb.chase.gain.value = 0;
+    const chaseF = c.createBiquadFilter();
+    chaseF.type = 'lowpass';
+    chaseF.frequency.value = 900;
+    const pulse = c.createGain();
+    pulse.gain.value = 0.5;
+    const plfo = c.createOscillator();
+    plfo.type = 'square';
+    plfo.frequency.value = 2.2;
+    const plfoG = c.createGain();
+    plfoG.gain.value = 0.5;
+    plfo.connect(plfoG).connect(pulse.gain);
+    plfo.start();
+    [55, 58.3, 82.4, 110.9, 164.8].forEach((f, i) => {
+      const o = c.createOscillator();
+      o.type = i < 2 ? 'sawtooth' : 'triangle';
+      o.frequency.value = f;
+      const g = c.createGain();
+      g.gain.value = i < 2 ? 0.05 : 0.03;
+      o.connect(g).connect(chaseF);
+      o.start();
+    });
+    chaseF.connect(pulse).connect(amb.chase).connect(this.ambientBus);
     this.amb = amb;
     this.setZone(this.zone, true);
   }
@@ -267,12 +292,50 @@ export class AudioManager {
       osc(196, 'sine', 0.05);
       osc(199.4, 'sine', 0.05);
       osc(588, 'sine', 0.006);
+    } else if (type === 'monster') {
+      // хриплое дыхание: шум через полосовой фильтр, модулированный медленным «вдохом»
+      const n = this.noiseSource(this.brown);
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 320;
+      bp.Q.value = 2.5;
+      const breath = c.createGain();
+      breath.gain.value = 0.2;
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 0.45;
+      const lg = c.createGain();
+      lg.gain.value = 0.55;
+      lfo.connect(lg).connect(breath.gain);
+      n.connect(bp).connect(breath).connect(gain);
+      n.start();
+      lfo.start();
+      srcs.push(n, lfo);
+      osc(38, 'sine', 0.09);
+      osc(57.5, 'sawtooth', 0.012);
     } else if (type === 'core') {
       osc(36, 'sine', 0.12);
       osc(72.3, 'triangle', 0.03);
       osc(219, 'sine', 0.01);
     }
     this.emitters.set(id, { id, type, pos, gain, pan, srcs, level, range, on: true, audible: false });
+  }
+
+  setChase(level) {
+    if (!this.ctx || !this.amb) return;
+    this.amb.chase.gain.setTargetAtTime(level * 0.9, this.ctx.currentTime, level > 0.1 ? 0.3 : 1.5);
+  }
+
+  setEmitterPos(id, x, y, z) {
+    const e = this.emitters.get(id);
+    if (!e) return;
+    e.pos.set(x, y, z);
+    const p = e.pan;
+    const t = this.ctx.currentTime;
+    if (p.positionX) {
+      p.positionX.setTargetAtTime(x, t, 0.05);
+      p.positionY.setTargetAtTime(y, t, 0.05);
+      p.positionZ.setTargetAtTime(z, t, 0.05);
+    } else p.setPosition(x, y, z);
   }
 
   setEmitter(id, on, level) {
@@ -524,6 +587,84 @@ export class AudioManager {
   }
   sfx_flashlight() {
     this.noise({ dur: 0.015, type: 'highpass', freq: 5000, gain: 0.08 });
+  }
+  // ── хоррор ──
+  sfx_heartbeat() {
+    this.tone({ freq: 55, freqEnd: 38, dur: 0.14, gain: 0.35, attack: 0.005 });
+    this.tone({ freq: 50, freqEnd: 34, dur: 0.16, gain: 0.25, attack: 0.005, delay: 0.24 });
+  }
+  sfx_monster_step(pos) {
+    this.noise({ dur: 0.18, freq: 160, gain: 0.55, pos, brown: true });
+    this.tone({ freq: 48, freqEnd: 30, dur: 0.2, gain: 0.22, pos });
+    this.noise({ dur: 0.05, type: 'bandpass', freq: 1400, q: 2, gain: 0.05, pos, delay: 0.02 });
+  }
+  sfx_roar(pos) {
+    const c = this.ctx;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(70, t + 1.4);
+    const wob = c.createOscillator();
+    wob.frequency.value = 31;
+    const wg = c.createGain();
+    wg.gain.value = 40;
+    wob.connect(wg).connect(o.frequency);
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 600;
+    f.Q.value = 1.5;
+    const g = c.createGain();
+    this.env(g, t, 0.05, 0.35, 1.5);
+    o.connect(f).connect(g).connect(this.out(pos));
+    o.start(t);
+    wob.start(t);
+    o.stop(t + 1.7);
+    wob.stop(t + 1.7);
+    this.noise({ dur: 1.4, type: 'bandpass', freq: 900, q: 1, gain: 0.25, pos, attack: 0.05 });
+  }
+  sfx_stinger() {
+    // резкий, но не оглушающий аккорд-удар
+    [92.5, 98, 138.6, 196, 207.7].forEach((f) => this.tone({ freq: f, dur: 1.8, type: 'sawtooth', gain: 0.045, attack: 0.01 }));
+    this.noise({ dur: 1.2, type: 'highpass', freq: 3000, freqEnd: 800, gain: 0.08, attack: 0.01 });
+  }
+  sfx_scream_far() {
+    this.tone({ freq: 620, freqEnd: 380, dur: 2.2, type: 'sawtooth', gain: 0.015, attack: 0.3 });
+    this.tone({ freq: 655, freqEnd: 360, dur: 2.4, type: 'triangle', gain: 0.012, attack: 0.3 });
+    this.noise({ dur: 2, type: 'bandpass', freq: 1800, freqEnd: 900, q: 6, gain: 0.03, attack: 0.3 });
+  }
+  sfx_catch() {
+    const c = this.ctx;
+    const t = c.currentTime;
+    [180, 190, 266, 377].forEach((f) => {
+      const o = c.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 0.4, t + 1.6);
+      const g = c.createGain();
+      this.env(g, t, 0.02, 0.09, 1.6);
+      o.connect(g).connect(this.sfxBus);
+      o.start(t);
+      o.stop(t + 1.7);
+    });
+    this.noise({ dur: 1.5, type: 'bandpass', freq: 1200, q: 0.8, gain: 0.35, attack: 0.01 });
+  }
+  sfx_door_slam(pos) {
+    this.noise({ dur: 0.35, freq: 300, gain: 0.7, pos, brown: true });
+    this.tone({ freq: 80, freqEnd: 45, dur: 0.35, gain: 0.25, pos });
+    this.noise({ dur: 0.08, type: 'bandpass', freq: 2200, q: 2, gain: 0.15, pos });
+  }
+  sfx_spark(pos) {
+    for (let i = 0; i < 5; i++) this.noise({ dur: 0.02 + Math.random() * 0.03, type: 'highpass', freq: 4000, gain: 0.12, pos, delay: i * 0.04 + Math.random() * 0.03 });
+    this.tone({ freq: 120, dur: 0.3, type: 'sawtooth', gain: 0.03, pos });
+  }
+  sfx_whisper(pos) {
+    for (let i = 0; i < 4; i++) this.noise({ dur: 0.25 + Math.random() * 0.3, type: 'bandpass', freq: 2500 + Math.random() * 2500, q: 8, gain: 0.025, pos, delay: i * 0.35, attack: 0.08 });
+  }
+  sfx_locker() {
+    this.noise({ dur: 0.2, type: 'bandpass', freq: 700, q: 3, gain: 0.25 });
+    this.tone({ freq: 260, freqEnd: 180, dur: 0.25, type: 'triangle', gain: 0.05, delay: 0.05 });
+    this.noise({ dur: 0.12, freq: 300, gain: 0.3, brown: true, delay: 0.25 });
   }
   sfx_fork_hum() {
     this.tone({ freq: 440, dur: 1.5, gain: 0.02, attack: 0.2 });

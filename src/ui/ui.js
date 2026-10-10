@@ -60,6 +60,8 @@ export class UI {
         <div id="helpline"></div>
         <div id="examine-ui" class="hidden"><div class="t"></div><div class="d"></div><div class="h">Мышь — вращать · [E] или [Esc] — убрать</div></div>
       </div>
+      <div id="locker-ov" class="layer hidden"><div class="locker-hint">Вы в шкафчике · [E] — выйти · не шумите</div></div>
+      <div id="cine" class="layer hidden"><div class="cine-text"></div></div>
       <div id="lockhint" class="hidden">Щёлкните, чтобы продолжить</div>
       <div id="modal" class="screen hidden"></div>
       <div id="menu" class="screen solid hidden"></div>
@@ -124,6 +126,40 @@ export class UI {
 
   fade(on) {
     this.el.fade.style.opacity = on ? '1' : '0';
+  }
+
+  showLocker(on) {
+    $('#locker-ov').classList.toggle('hidden', !on);
+  }
+
+  // Кинематографичные строки на чёрном фоне (вступление, поимка).
+  cinematic(lines, { hold = 1.6, red = false } = {}) {
+    const box = $('#cine');
+    const t = $('.cine-text', box);
+    box.classList.remove('hidden');
+    box.classList.toggle('red', red);
+    t.innerHTML = '';
+    return new Promise((resolve) => {
+      let i = 0;
+      const next = () => {
+        if (i >= lines.length) {
+          setTimeout(() => {
+            box.classList.add('out');
+            setTimeout(() => {
+              box.classList.add('hidden');
+              box.classList.remove('out');
+              resolve();
+            }, 900);
+          }, hold * 1000);
+          return;
+        }
+        const p = document.createElement('p');
+        p.textContent = lines[i++];
+        t.appendChild(p);
+        setTimeout(next, 1500);
+      };
+      next();
+    });
   }
 
   distort(strength) {

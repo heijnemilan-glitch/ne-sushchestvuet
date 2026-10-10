@@ -6,7 +6,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-const GAME_SIZE = '0,8 МБ';
+const GAME_SIZE = '4,8 МБ';
 const ICON = {
   heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 7 4.5c2 0 3.6 1.1 5 2.9 1.4-1.8 3-2.9 5-2.9 3.6 0 5.6 3.5 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
   comment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
@@ -181,9 +181,9 @@ function viewHome() {
   <section class="hero">
     <div class="hero-bg" style="background-image:url('site/img/hero.jpg')"></div>
     <div class="hero-in wrap">
-      <p class="eyebrow">Сектор 0 · психологическая головоломка</p>
+      <p class="eyebrow">Сектор 0 · психологический хоррор</p>
       <h1 class="title">НЕ<br>СУЩЕСТВУЕТ</h1>
-      <p class="lead">Заброшенный комплекс запоминает всё, что вы делаете, — и тихо перестраивается в ответ. Никто не объяснит правила. Их придётся найти самому.</p>
+      <p class="lead">Заброшенный комплекс запоминает всё, что вы делаете, — и тихо перестраивается в ответ. Где-то в коридорах ходит Оно. Оно слышит, как вы бежите, и видит свет вашего фонаря.</p>
       <div class="cta">
         <a class="btn btn-primary btn-lg" href="play/">${ICON.play}Играть в браузере</a>
         <a class="btn btn-lg" href="download/ne-sushchestvuet.html" download="НЕ СУЩЕСТВУЕТ.html">${ICON.download}Скачать игру <span class="dim">${GAME_SIZE}</span></a>
@@ -205,7 +205,7 @@ function viewHome() {
       <article class="feature"><span class="num mono">01</span><h3>Мир запоминает</h3><p>Игра ведёт память ваших действий — маршруты, возвращения, брошенные предметы — и меняет по ним комнаты, двери и события.</p></article>
       <article class="feature"><span class="num mono">02</span><h3>Скрытые правила</h3><p>Одиннадцать законов, по которым живёт комплекс. Ни один не объяснён. Журнал записывает только то, что вы заметили.</p></article>
       <article class="feature"><span class="num mono">03</span><h3>Невозможная архитектура</h3><p>Комната больше здания. Лифт приезжает на несуществующий этаж. Коридор однажды приводит туда, откуда вы вышли, — но наоборот.</p></article>
-      <article class="feature"><span class="num mono">04</span><h3>Четыре исхода</h3><p>Финал зависит от того, что вы нашли и кому поверили. Один из них видели очень немногие.</p></article>
+      <article class="feature"><span class="num mono">04</span><h3>Оно охотится</h3><p>Существо бродит по комплексу, открывает двери и идёт на звук. Бегите, прячьтесь в шкафчики, гасите фонарь. Комната пробуждения — единственное безопасное место.</p></article>
     </div>
   </section>
 
@@ -220,6 +220,7 @@ function viewHome() {
     <p class="eyebrow">Кто ещё здесь</p>
     <h2>Вы не один. Наверное.</h2>
     <div class="cast">
+      <article class="who"><span class="mono tag" style="color:#ff6a4a;border-color:rgba(255,106,74,.4)">оно</span><h3>Слышит каждый ваш шаг</h3><p>Выше человека. Двигается рывками. Если увидит — побежит. Если поймает — вы проснётесь в комнате пробуждения, а комплекс запомнит, что это уже случалось.</p></article>
       <article class="who"><span class="mono tag">наблюдатель</span><h3>Стоит в конце коридора</h3><p>Не нападает. Исчезает, если посмотреть прямо. После каждой встречи в комнатах, где вы уже были, что-то сдвигается. И он всегда смотрит в одну сторону.</p></article>
       <article class="who"><span class="mono tag term">оператор</span><h3>Говорит через терминалы</h3><p>Помогает. Иногда врёт. Его советы стоит проверять — и он запоминает, слушаетесь ли вы.</p></article>
       <article class="who"><span class="mono tag">копия</span><h3>Повторяет вас</h3><p>Идёт вашим путём с опозданием на десять секунд и нажимает то, что нажимали вы. Иногда это единственный способ пройти дальше.</p></article>

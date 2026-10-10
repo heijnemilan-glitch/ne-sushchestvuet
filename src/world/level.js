@@ -14,6 +14,7 @@ import { Props, itemModel } from './props.js';
 import { textTexture, updateTextTexture } from '../render/materials.js';
 import { ITEMS } from '../systems/inventory.js';
 import { worldSecrets } from '../systems/story.js';
+import { Horror } from './horror.js';
 
 const L0 = { level: '0' };
 
@@ -54,6 +55,7 @@ export class Level {
     this.buildCore();
     this.buildVoid();
     this.buildElevator();
+    this.horror = new Horror(this);
     this.b.finalize();
 
     this.subscribe();
@@ -1103,7 +1105,7 @@ export class Level {
       let on = true;
       let k = a.hi;
       if (a.mode === 'main') on = power;
-      else if (a.mode === 'mixed') k = power ? a.hi : a.lo;
+      else if (a.mode === 'mixed') k = power ? a.hi * 0.85 : a.lo * 0.6; // без питания комплекс почти тёмный
       else if (a.mode === 'mixedInv') k = power ? a.hi : a.lo;
       else if (a.mode === 'switch') on = !!this.game.world.get(a.switchVar);
       else k = a.hi ?? a.lo;
@@ -1286,6 +1288,7 @@ export class Level {
     this.time = time;
     const g = this.game;
     for (const o of this.objects) o.update(dt);
+    this.horror.update(dt);
     // шторки
     for (const c of this.curtains) {
       c.group.children.forEach((pv) => {
