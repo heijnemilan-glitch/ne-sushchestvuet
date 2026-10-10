@@ -15,6 +15,12 @@ export const ITEMS = {
   frag1: { name: 'Фрагмент плана I', desc: 'Обрывок плана здания. На нём комната 0-7 — размером с целое крыло. Подпись: «не существует».', model: 'paper', tag: 'fragment' },
   frag2: { name: 'Фрагмент плана II', desc: 'Обрывок плана. Смотровое окно, за ним — штриховка и слово «НЕТ».', model: 'paper', tag: 'fragment' },
   frag3: { name: 'Фрагмент плана III', desc: 'Обрывок плана. Комната пробуждения нарисована дважды — зеркально. Между ними — коридор без длины.', model: 'paper', tag: 'fragment' },
+  gasmask: { name: 'Противогаз', desc: 'Старый противогаз ГП-5. Резина потрескалась, стёкла запотевают. Без фильтра бесполезен. Надеть/снять — [M]; надевается сам, если войти в газ.', model: 'gasmask' },
+  cutters: { name: 'Болторез', desc: 'Тяжёлый болторез. На рукоятке выцарапано: «ВЫХОД — ВНИЗУ».', model: 'cutters' },
+  tape1: { name: 'Кассета 1 · «Институт»', desc: 'VHS-кассета. Наклейка: «Институт памяти. 1987». Её можно пересмотреть в главном меню.', model: 'tape', tag: 'tape' },
+  tape2: { name: 'Кассета 2 · «Затопление»', desc: 'VHS-кассета. Наклейка размокла: «…нижний ярус…». Её можно пересмотреть в главном меню.', model: 'tape', tag: 'tape' },
+  tape3: { name: 'Кассета 3 · «Оператор»', desc: 'VHS-кассета. Наклейка: «НЕ ДАВАТЬ ОПЕРАТОРУ». Её можно пересмотреть в главном меню.', model: 'tape', tag: 'tape' },
+  tape4: { name: 'Кассета 4 · «Испытуемый 0»', desc: 'VHS-кассета. Наклейка твоим почерком. Её можно пересмотреть в главном меню.', model: 'tape', tag: 'tape' },
   echo_tape: { name: 'Катушка ленты', desc: 'Катушка магнитной ленты, подписанная твоим почерком: «не включай без меня».', model: 'tape' },
 };
 
@@ -22,6 +28,17 @@ export class Inventory {
   constructor(bus, data) {
     this.bus = bus;
     this.data = data || { items: [], active: null };
+    this.data.counts ||= {};
+  }
+
+  // расходники: батарейки, стимуляторы, бутылки, фильтры
+  count(kind) {
+    return this.data.counts[kind] || 0;
+  }
+
+  addCount(kind, n) {
+    this.data.counts[kind] = Math.max(0, this.count(kind) + n);
+    this.bus.emit('inventory:changed', { counts: kind });
   }
 
   has(id) {

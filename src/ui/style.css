@@ -39,6 +39,37 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #helpline { position: fixed; right: 18px; bottom: 14px; font-size: 12px; color: var(--dim); opacity: 0.75; text-align: right; line-height: 1.7; }
 #lockhint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 22px; background: rgba(0,0,0,0.6); border: 1px solid var(--line); font-size: 14px; pointer-events: auto; cursor: pointer; }
 
+/* HUD выживания */
+#surv { position: fixed; left: 22px; bottom: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9aa49a; pointer-events: none; }
+.sv-row { display: flex; align-items: center; gap: 8px; transition: opacity 0.4s; }
+.sv-ico { width: 14px; text-align: center; color: #b8c4b8; }
+.sv-bar { width: 120px; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.sv-bar i { display: block; height: 100%; background: #d8e2d4; transition: width 0.3s; }
+.sv-bar i.low { background: #ff6040; animation: blinkbar 0.8s infinite; }
+.sv-bar.stam i { background: #8fc9a8; }
+.sv-bar.stam i.stim { background: #ff8060; box-shadow: 0 0 8px #ff6040; }
+@keyframes blinkbar { 50% { opacity: 0.3; } }
+.sv-n { font-family: Consolas, monospace; }
+.sv-items { display: flex; gap: 12px; margin-top: 4px; }
+.sv-items kbd { font-size: 10px; }
+/* противогаз: два стекла, всё остальное — резина и темнота */
+#mask-ov { background: radial-gradient(ellipse 22% 30% at 34% 46%, transparent 70%, rgba(0,0,0,0.6) 85%, #050605 92%), radial-gradient(ellipse 22% 30% at 66% 46%, transparent 70%, rgba(0,0,0,0.6) 85%, #050605 92%); mix-blend-mode: multiply; }
+#mask-ov::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 46%, transparent 55%, rgba(4,5,4,0.96) 80%); }
+#toxic-ov { opacity: 0; background: radial-gradient(ellipse at center, rgba(90,120,20,0.25) 0%, rgba(40,60,8,0.75) 100%); mix-blend-mode: multiply; transition: opacity 0.4s; }
+/* VHS-кассета */
+#tape { z-index: 57; }
+#tape .lb { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
+#tape .lb.top { top: 0; }
+#tape .lb.bottom { bottom: 0; }
+#tape .tape-rec { position: absolute; left: 4vw; top: 13vh; color: #e8e8e0; font-size: 18px; letter-spacing: 0.15em; text-shadow: 0 0 6px rgba(255,255,255,0.4); animation: blink 1.4s steps(2) infinite; }
+#tape .tape-date { position: absolute; right: 4vw; top: 13vh; color: #e8e8e0; font-size: 16px; letter-spacing: 0.12em; text-shadow: 2px 0 rgba(255,0,0,0.5), -2px 0 rgba(0,255,255,0.4); }
+#tape .tape-title { position: absolute; left: 4vw; bottom: 13vh; color: #c8d0c8; font-size: 14px; letter-spacing: 0.3em; }
+#tape .tape-sub { position: absolute; left: 50%; bottom: 2.5vh; transform: translateX(-50%); width: min(900px, 90vw); text-align: center; }
+#tape .tape-sub p { margin: 4px 0; color: #f0f0e8; font-size: clamp(16px, 1.8vw, 22px); text-shadow: 0 2px 6px #000; opacity: 0; animation: cinein 1.2s forwards; }
+#tape .tape-skip { position: absolute; right: 4vw; bottom: 13vh; color: #6a726a; font-size: 12px; }
+#tape::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.12) 0 2px, transparent 2px 4px); pointer-events: none; }
+.gfx-hint { font-size: 12px; color: #6f786f; letter-spacing: 0; }
+
 /* шкафчик: темнота с горизонтальными щелями */
 #locker-ov { background: repeating-linear-gradient(to bottom, #000 0, #000 7vh, rgba(0,0,0,0.15) 7vh, rgba(0,0,0,0.15) 9.5vh), radial-gradient(ellipse at center, transparent 30%, #000 85%); }
 #locker-ov .locker-hint { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); font-size: 13px; color: #8b948c; letter-spacing: 0.1em; }

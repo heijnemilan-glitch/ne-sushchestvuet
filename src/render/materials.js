@@ -219,6 +219,63 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return col([62, 58, 72], k);
   });
 
+  // ─ кирпич канализации: кладка, швы, сырость снизу
+  const brickC = (() => {
+    const c = pixels(S, (u, v) => {
+      const row = Math.floor(v * 8);
+      const off = row % 2 ? 0.125 : 0;
+      const col = Math.floor((u + off) * 4);
+      const tone = 0.75 + (((row * 7 + col * 13) % 6) / 6) * 0.25;
+      const k = tone * (0.8 + n(u, v) * 0.3) * (0.75 + v * 0.3);
+      return [92 * k, 70 * k, 58 * k];
+    });
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = 'rgba(25,22,18,0.9)';
+    ctx.lineWidth = Math.max(2, S / 128);
+    for (let r = 0; r <= 8; r++) {
+      const y = (r / 8) * S;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(S, y);
+      ctx.stroke();
+      const off = r % 2 ? 0.125 : 0;
+      for (let k = 0; k <= 4; k++) {
+        const x = ((k / 4 - off + 1) % 1) * S;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + S / 8);
+        ctx.stroke();
+      }
+    }
+    return c;
+  })();
+
+  // ─ нормали ряби для воды (бесшовные)
+  const waterN = (() => {
+    const c = canvasOf(256);
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(256, 256);
+    const h = (u, v) => n(u * 2 % 1, v * 2 % 1, 4);
+    for (let y = 0; y < 256; y++) {
+      for (let x = 0; x < 256; x++) {
+        const u = x / 256;
+        const v = y / 256;
+        const dx = (h((u + 1 / 256) % 1, v) - h(u, v)) * 12;
+        const dy = (h(u, (v + 1 / 256) % 1) - h(u, v)) * 12;
+        const i = (y * 256 + x) * 4;
+        img.data[i] = 128 + dx * 127;
+        img.data[i + 1] = 128 + dy * 127;
+        img.data[i + 2] = 255;
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(6, 6);
+    return t;
+  })();
+
   const T = (c) => toTexture(c, aniso);
   const B = (c) => toBump(c, aniso);
 
@@ -264,6 +321,13 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     lampGreen: new THREE.MeshBasicMaterial({ color: 0x40ff80 }),
     screen: new THREE.MeshBasicMaterial({ color: 0x9fe8c0 }),
     observer: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 1, metalness: 0 }),
+    wetConcrete: std({ map: T(concreteDarkC), bumpMap: B(concreteDarkC), bumpScale: 1.6, color: 0x7a807a, roughness: 0.32, metalness: 0.05 }, 2.5),
+    brick: std({ map: T(brickC), bumpMap: B(brickC), bumpScale: 2.2, roughness: 0.55 }, 2.2),
+    rust: std({ map: T(metalC), color: 0x9a5a38, roughness: 0.75, metalness: 0.45 }, 1.2),
+    grate: std({ color: 0x3a3e40, roughness: 0.5, metalness: 0.7 }),
+    hospital: std({ map: T(whiteTileC), bumpMap: B(whiteTileC), bumpScale: 1, color: 0xb8c4bc, roughness: 0.45 }, 1.6),
+    water: new THREE.MeshStandardMaterial({ color: 0x0b1410, roughness: 0.06, metalness: 0.55, normalMap: waterN, normalScale: new THREE.Vector2(0.6, 0.6), transparent: true, opacity: 0.93 }),
+    sky: new THREE.MeshBasicMaterial({ color: 0x0a0f18, side: THREE.BackSide, fog: false }),
     copy: new THREE.MeshStandardMaterial({ color: 0xcfe3ea, emissive: 0x6f8f9a, emissiveIntensity: 0.6, roughness: 0.6, transparent: true, opacity: 0.38, depthWrite: false }),
   };
   return mats;

@@ -25,6 +25,9 @@ export class Player {
     this.sprinting = false;
     this.roll = 0;
     this.extraFov = 0;
+    this.crouchAmt = 0;
+    this.crouchToggle = false;
+    this.crouching = false;
   }
 
   setPose(p) {
@@ -64,7 +67,7 @@ export class Player {
     // в шкафчике: не двигаемся, смотрим только сквозь щели дверцы
     if (this.hiddenIn) {
       const h = this.hiddenIn;
-      this.pos.set(h.inside.x, 0, h.inside.z);
+      if (!h.animating) this.pos.set(h.inside.x, h.inside.y || 0, h.inside.z);
       let d = this.yaw - h.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.yaw = h.yaw + clamp(d, -0.45, 0.45);
@@ -76,8 +79,19 @@ export class Player {
       this.applyCamera(dt);
       return;
     }
-    const { f, r, sprint } = active ? this.input() : { f: 0, r: 0, sprint: false };
-    const speed = sprint ? 4.0 : 2.3;
+    const inp = active ? this.input() : { f: 0, r: 0, sprint: false };
+    const { f, r } = inp;
+    // приседание: по клавише, в вентиляции и у входа в шахту — само
+    const zone = this.game.currentZone;
+    const nearVent = (this.game.level.ventMouths || []).some((m) => Math.hypot(m.x - this.pos.x, m.z - this.pos.z) < 1.15 && Math.abs(m.y - this.pos.y) < 1.2);
+    let wantCrouch = this.crouchToggle || nearVent || !!(zone && zone.crouch);
+    if (!wantCrouch && this.crouchAmt > 0.05 && this.blockedAbove()) wantCrouch = true; // нельзя встать под низким потолком
+    this.crouchAmt += ((wantCrouch ? 1 : 0) - this.crouchAmt) * Math.min(1, dt * 9);
+    this.crouching = this.crouchAmt > 0.5;
+    const surv = this.game.survival;
+    const sprint = inp.sprint && !this.crouching && (!surv || surv.canSprint());
+    const mul = surv ? surv.speedMul : 1;
+    const speed = (this.crouching ? 1.3 : sprint ? 4.0 : 2.3) * (sprint ? mul : 1);
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
     // вперёд = -Z в локальных координатах камеры
@@ -119,7 +133,7 @@ export class Player {
         this.stepDist = 0;
         const fp = this.pos.clone();
         fp.y += 0.05;
-        this.game.audio.footstep(this.surface, fp, sprint);
+        if (!this.crouching || Math.random() < 0.5) this.game.audio.footstep(this.surface, fp, sprint, this.crouching);
       }
     } else {
       this.stillTime += dt;
@@ -131,7 +145,8 @@ export class Player {
     const bobAmt = this.game.settings.headBob === false || this.hiddenIn ? 0 : 1;
     const by = this.moving ? Math.sin(this.bob * 2) * 0.035 * bobAmt : 0;
     const bx = this.moving ? Math.cos(this.bob) * 0.02 * bobAmt : 0;
-    this.camera.position.set(this.pos.x + Math.cos(this.yaw) * bx, this.pos.y + EYE + by, this.pos.z - Math.sin(this.yaw) * bx);
+    const eyeH = EYE - 0.82 * (this.crouchAmt || 0);
+    this.camera.position.set(this.pos.x + Math.cos(this.yaw) * bx, this.pos.y + eyeH + by, this.pos.z - Math.sin(this.yaw) * bx);
     this.camera.rotation.set(this.pitch, this.yaw, this.roll, 'YXZ');
     const fov = this.game.settings.fov + this.extraFov + (this.sprinting ? 4 : 0);
     if (Math.abs(this.camera.fov - fov) > 0.05) {
@@ -146,7 +161,7 @@ export class Player {
     const nx = this.pos.x + dx;
     const nz = this.pos.z + dz;
     const y0 = this.pos.y + 0.35;
-    const y1 = this.pos.y + HEIGHT;
+    const y1 = this.pos.y + HEIGHT - 0.78 * (this.crouchAmt || 0);
     let blocked = false;
     for (const c of b.near(nx - RADIUS - 0.1, nz - RADIUS - 0.1, nx + RADIUS + 0.1, nz + RADIUS + 0.1)) {
       if (!c.enabled || c.y1 <= y0 || c.y0 >= y1) continue;
@@ -168,6 +183,22 @@ export class Player {
       if (dx) this.vel.x *= 0.2;
       if (dz) this.vel.z *= 0.2;
     }
+  }
+
+  // Есть ли над головой препятствие, мешающее выпрямиться.
+  blockedAbove() {
+    const b = this.game.builder;
+    const x = this.pos.x;
+    const z = this.pos.z;
+    const y0 = this.pos.y + 1.0;
+    const y1 = this.pos.y + HEIGHT;
+    for (const c of b.near(x - RADIUS, z - RADIUS, x + RADIUS, z + RADIUS)) {
+      if (!c.enabled || c.y1 <= y0 || c.y0 >= y1) continue;
+      const px = clamp(x, c.x0, c.x1);
+      const pz = clamp(z, c.z0, c.z1);
+      if ((x - px) ** 2 + (z - pz) ** 2 < RADIUS * RADIUS * 0.8) return true;
+    }
+    return false;
   }
 
   // Направление взгляда (для Наблюдателя и взаимодействий).

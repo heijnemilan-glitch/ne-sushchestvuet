@@ -22,6 +22,13 @@ const ZONE_AMBIENCE = {
   core: { vent: 0.15, hum: 0.2, whine: 0.0, drone: 0.6, cutoff: 200 },
   void: { vent: 0.0, hum: 0.0, whine: 0.1, drone: 0.08, cutoff: 900 },
   elevator: { vent: 0.2, hum: 0.25, whine: 0.0, drone: 0.0, cutoff: 200 },
+  vent: { vent: 1.0, hum: 0.08, whine: 0.0, drone: 0.1, cutoff: 520 },
+  sewer: { vent: 0.55, hum: 0.0, whine: 0.0, drone: 0.25, cutoff: 650 },
+  canal: { vent: 0.7, hum: 0.0, whine: 0.0, drone: 0.3, cutoff: 700 },
+  flooded: { vent: 0.8, hum: 0.0, whine: 0.04, drone: 0.4, cutoff: 600 },
+  pump: { vent: 0.4, hum: 0.3, whine: 0.0, drone: 0.2, cutoff: 400 },
+  outflow: { vent: 1.0, hum: 0.0, whine: 0.0, drone: 0.1, cutoff: 1800 },
+  outside: { vent: 1.2, hum: 0.0, whine: 0.0, drone: 0.05, cutoff: 3500 },
 };
 
 export class AudioManager {
@@ -404,9 +411,16 @@ export class AudioManager {
     o.stop(t + dur + attack + 0.05);
   }
 
-  footstep(surface, pos, sprint) {
+  footstep(surface, pos, sprint, quiet = false) {
     if (!this.ctx) return;
-    const k = sprint ? 1.25 : 1;
+    const k = (sprint ? 1.25 : 1) * (quiet ? 0.4 : 1);
+    if (surface === 'wet' || surface === 'mud') {
+      const v = 0.9 + Math.random() * 0.2;
+      this.noise({ dur: 0.16, type: 'bandpass', freq: 900 * v, q: 1.2, gain: 0.12 * k, pos, attack: 0.01 });
+      this.noise({ dur: 0.08, type: 'highpass', freq: 3000, gain: 0.05 * k, pos, delay: 0.04 });
+      this.tone({ freq: 600 * v, freqEnd: 300, dur: 0.08, gain: 0.02 * k, pos, delay: 0.05 });
+      return;
+    }
     const v = 0.9 + Math.random() * 0.2;
     switch (surface) {
       case 'metal':
@@ -665,6 +679,118 @@ export class AudioManager {
     this.noise({ dur: 0.2, type: 'bandpass', freq: 700, q: 3, gain: 0.25 });
     this.tone({ freq: 260, freqEnd: 180, dur: 0.25, type: 'triangle', gain: 0.05, delay: 0.05 });
     this.noise({ dur: 0.12, freq: 300, gain: 0.3, brown: true, delay: 0.25 });
+  }
+  // ── выживание, скримеры, атмосфера ──
+  sfx_drip(pos) {
+    const f = 1400 + Math.random() * 1400;
+    this.tone({ freq: f, freqEnd: f * 2.2, dur: 0.06, gain: 0.07, pos });
+    this.tone({ freq: f * 0.5, dur: 0.18, gain: 0.02, pos, delay: 0.02 });
+  }
+  sfx_drip_blood(pos) {
+    this.tone({ freq: 700 + Math.random() * 200, freqEnd: 300, dur: 0.07, gain: 0.05, pos });
+    this.noise({ dur: 0.05, type: 'lowpass', freq: 500, gain: 0.05, pos });
+  }
+  sfx_battery() {
+    this.noise({ dur: 0.04, type: 'bandpass', freq: 2500, q: 3, gain: 0.15 });
+    this.noise({ dur: 0.05, type: 'bandpass', freq: 1800, q: 3, gain: 0.15, delay: 0.25 });
+    this.tone({ freq: 900, dur: 0.05, type: 'square', gain: 0.02, delay: 0.32 });
+  }
+  sfx_stim() {
+    this.noise({ dur: 0.3, type: 'highpass', freq: 5000, gain: 0.06, attack: 0.05 });
+    for (let i = 0; i < 6; i++) this.sfx_heartbeat_at(i * 0.42);
+  }
+  sfx_heartbeat_at(d) {
+    this.tone({ freq: 60, freqEnd: 40, dur: 0.12, gain: 0.3, delay: d });
+    this.tone({ freq: 55, freqEnd: 36, dur: 0.14, gain: 0.22, delay: d + 0.2 });
+  }
+  sfx_throw() {
+    this.noise({ dur: 0.18, type: 'bandpass', freq: 1200, freqEnd: 400, q: 2, gain: 0.08, attack: 0.02 });
+  }
+  sfx_glass(pos) {
+    for (let i = 0; i < 9; i++) this.tone({ freq: 2500 + Math.random() * 5000, dur: 0.1 + Math.random() * 0.25, gain: 0.04, pos, delay: Math.random() * 0.08 });
+    this.noise({ dur: 0.3, type: 'highpass', freq: 3000, gain: 0.35, pos });
+  }
+  sfx_mask() {
+    this.noise({ dur: 0.25, type: 'lowpass', freq: 600, gain: 0.25, attack: 0.03, brown: true });
+    this.tone({ freq: 180, freqEnd: 120, dur: 0.2, gain: 0.05, delay: 0.1 });
+  }
+  sfx_mask_breath() {
+    this.noise({ dur: 0.9, type: 'bandpass', freq: 700, q: 1.5, gain: 0.08, attack: 0.35 });
+    this.noise({ dur: 0.7, type: 'bandpass', freq: 450, q: 2, gain: 0.06, attack: 0.25, delay: 1.1 });
+    this.tone({ freq: 2200, dur: 0.05, gain: 0.01, delay: 1.05 });
+  }
+  sfx_cough() {
+    for (let i = 0; i < 3; i++) {
+      this.noise({ dur: 0.14, type: 'bandpass', freq: 500 + i * 60, q: 1.2, gain: 0.35, delay: i * 0.22, attack: 0.005 });
+      this.tone({ freq: 140, freqEnd: 90, dur: 0.12, type: 'sawtooth', gain: 0.04, delay: i * 0.22 });
+    }
+  }
+  sfx_pant() {
+    for (let i = 0; i < 3; i++) this.noise({ dur: 0.35, type: 'bandpass', freq: 900, q: 1, gain: 0.06, delay: i * 0.5, attack: 0.1 });
+  }
+  sfx_ladder() {
+    for (let i = 0; i < 6; i++) this.noise({ dur: 0.06, type: 'bandpass', freq: 1100 + Math.random() * 400, q: 4, gain: 0.12, delay: i * 0.35 });
+  }
+  sfx_grate() {
+    this.noise({ dur: 0.4, type: 'bandpass', freq: 1500, q: 3, gain: 0.15, attack: 0.05 });
+    this.noise({ dur: 0.2, freq: 300, gain: 0.3, brown: true, delay: 0.4 });
+  }
+  sfx_chain() {
+    this.noise({ dur: 0.06, type: 'highpass', freq: 3000, gain: 0.3 });
+    for (let i = 0; i < 7; i++) this.tone({ freq: 1800 + Math.random() * 1500, dur: 0.12, type: 'triangle', gain: 0.03, delay: 0.05 + i * 0.06 });
+  }
+  sfx_power_down() {
+    this.tone({ freq: 120, freqEnd: 30, dur: 1.2, type: 'sawtooth', gain: 0.06 });
+    this.noise({ dur: 0.1, type: 'highpass', freq: 3000, gain: 0.1 });
+  }
+  sfx_screech() {
+    // резкий визг скримера: диссонанс, высокий шум, низкий удар
+    [880, 932, 1245, 1661].forEach((f, i) => this.tone({ freq: f, freqEnd: f * 0.7, dur: 0.9, type: 'sawtooth', gain: 0.05, delay: i * 0.01 }));
+    this.noise({ dur: 0.8, type: 'bandpass', freq: 3200, freqEnd: 1500, q: 2, gain: 0.35 });
+    this.tone({ freq: 50, freqEnd: 30, dur: 0.6, gain: 0.35 });
+  }
+  sfx_body_drop(pos) {
+    this.noise({ dur: 0.6, type: 'bandpass', freq: 400, q: 6, gain: 0.08, pos, attack: 0.3 });
+    this.noise({ dur: 0.25, freq: 200, gain: 0.6, pos, brown: true, delay: 0.5 });
+    this.tone({ freq: 70, freqEnd: 40, dur: 0.3, gain: 0.25, pos, delay: 0.5 });
+  }
+  sfx_groan(pos) {
+    this.tone({ freq: 95, freqEnd: 70, dur: 2.2, type: 'sawtooth', gain: 0.03, pos, attack: 0.5 });
+    this.noise({ dur: 2, type: 'bandpass', freq: 300, q: 4, gain: 0.08, pos, attack: 0.5 });
+  }
+  sfx_bang(pos) {
+    this.noise({ dur: 0.5, freq: 250, gain: 0.5, pos, brown: true });
+    this.tone({ freq: 140, freqEnd: 90, dur: 0.8, type: 'triangle', gain: 0.05, pos });
+  }
+  sfx_pipe_knock(pos) {
+    for (let i = 0; i < 3; i++) this.tone({ freq: 320, dur: 0.4, type: 'triangle', gain: 0.05, pos, delay: i * 0.3 });
+  }
+  sfx_steps_above(pos) {
+    for (let i = 0; i < 5; i++) this.noise({ dur: 0.15, freq: 180, gain: 0.25, pos, brown: true, delay: i * 0.55 });
+  }
+  sfx_splash(pos) {
+    this.noise({ dur: 0.7, type: 'bandpass', freq: 1200, q: 0.8, gain: 0.35, pos, attack: 0.01 });
+    this.noise({ dur: 1.2, freq: 400, gain: 0.2, pos, brown: true, delay: 0.1 });
+  }
+  sfx_boat_start() {
+    this.noise({ dur: 1.5, freq: 300, gain: 0.25, brown: true, attack: 0.2 });
+    this.sfx_splash();
+  }
+  sfx_boat_bump() {
+    this.noise({ dur: 0.4, freq: 180, gain: 0.7, brown: true });
+    this.tone({ freq: 60, freqEnd: 40, dur: 0.5, gain: 0.3 });
+  }
+  sfx_tape_in() {
+    this.noise({ dur: 0.15, type: 'bandpass', freq: 1200, q: 3, gain: 0.2 });
+    this.tone({ freq: 60, dur: 1.2, type: 'sawtooth', gain: 0.02, delay: 0.2, attack: 0.3 });
+    this.noise({ dur: 1.5, type: 'highpass', freq: 4000, gain: 0.03, delay: 0.3, attack: 0.3 });
+  }
+  sfx_tape_out() {
+    this.noise({ dur: 0.2, type: 'bandpass', freq: 900, q: 3, gain: 0.2 });
+  }
+  sfx_tape_glitch() {
+    this.noise({ dur: 0.25, type: 'highpass', freq: 2500, gain: 0.08 });
+    this.tone({ freq: 15000, dur: 0.2, gain: 0.006 });
   }
   sfx_fork_hum() {
     this.tone({ freq: 440, dur: 1.5, gain: 0.02, attack: 0.2 });

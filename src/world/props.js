@@ -14,21 +14,19 @@ export class Props {
       (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 })
     );
     this.rnd = rnd;
+    this.yb = 0; // базовая высота пола (для комнат на балконе, в канализации и т.п.)
   }
 
   table(x, z, w, d, zone, { h = 0.76, mat = 'wood', legs = 'metalDark' } = {}) {
     const b = this.b;
-    b.box(x - w / 2, h - 0.04, z - d / 2, x + w / 2, h, z + d / 2, mat, { zone, collide: false });
-    b.addCollider({ x0: x - w / 2, x1: x + w / 2, y0: 0 + this.y(zone), y1: h + this.y(zone), z0: z - d / 2, z1: z + d / 2 }, 'prop');
+    const y = this.yb;
+    b.box(x - w / 2, y + h - 0.04, z - d / 2, x + w / 2, y + h, z + d / 2, mat, { zone, collide: false });
+    b.addCollider({ x0: x - w / 2, x1: x + w / 2, y0: y, y1: y + h, z0: z - d / 2, z1: z + d / 2 }, 'prop');
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       const lx = x + sx * (w / 2 - 0.06);
       const lz = z + sz * (d / 2 - 0.06);
-      b.box(lx - 0.025, 0, lz - 0.025, lx + 0.025, h - 0.04, lz + 0.025, legs, { zone, collide: false });
+      b.box(lx - 0.025, y, lz - 0.025, lx + 0.025, y + h - 0.04, lz + 0.025, legs, { zone, collide: false });
     }
-  }
-
-  y() {
-    return 0;
   }
 
   // Стул — отдельная группа (его может сдвинуть Наблюдатель).
@@ -50,7 +48,7 @@ export class Props {
         o.receiveShadow = true;
       }
     });
-    g.position.set(x, 0, z);
+    g.position.set(x, this.yb, z);
     g.rotation.y = ry;
     (parent || this.b.groupOf(zone)).add(g);
     return g;
@@ -76,7 +74,7 @@ export class Props {
     g.traverse((o) => {
       if (o.isMesh) o.castShadow = o.receiveShadow = true;
     });
-    g.position.set(x, 0, z);
+    g.position.set(x, this.yb, z);
     g.rotation.y = ry;
     this.b.groupOf(zone).add(g);
     return g;
@@ -87,9 +85,10 @@ export class Props {
     const b = this.b;
     const levels = 5;
     const mat = 'metalDark';
+    const Y = this.yb;
     const box = (a0, y0, c0, a1, y1, c1, m) => {
-      if (axis === 'z') b.box(x - d / 2 + a0, y0, c0, x - d / 2 + a1, y1, c1, m, { zone, collide: false });
-      else b.box(c0, y0, x - d / 2 + a0, c1, y1, x - d / 2 + a1, m, { zone, collide: false });
+      if (axis === 'z') b.box(x - d / 2 + a0, Y + y0, c0, x - d / 2 + a1, Y + y1, c1, m, { zone, collide: false });
+      else b.box(c0, Y + y0, x - d / 2 + a0, c1, Y + y1, x - d / 2 + a1, m, { zone, collide: false });
     };
     // стойки
     for (const c of [z0, (z0 + z1) / 2, z1 - 0.04]) {
@@ -113,8 +112,8 @@ export class Props {
         c += bw + 0.005;
       }
     }
-    if (axis === 'z') b.addCollider({ x0: x - d / 2, x1: x + d / 2, y0: 0, y1: h, z0, z1 }, 'prop');
-    else b.addCollider({ x0: z0, x1: z1, y0: 0, y1: h, z0: x - d / 2, z1: x + d / 2 }, 'prop');
+    if (axis === 'z') b.addCollider({ x0: x - d / 2, x1: x + d / 2, y0: Y, y1: Y + h, z0, z1 }, 'prop');
+    else b.addCollider({ x0: z0, x1: z1, y0: Y, y1: Y + h, z0: x - d / 2, z1: x + d / 2 }, 'prop');
   }
 
   // Потолочный светильник: излучающая панель + точка для пула света.
@@ -180,7 +179,7 @@ export class Props {
     g.traverse((o) => {
       if (o.isMesh) o.castShadow = o.receiveShadow = true;
     });
-    g.position.set(x, y, z);
+    g.position.set(x, y + this.yb, z);
     g.rotation.y = ry;
     this.b.groupOf(zone).add(g);
     g.userData.screen = scr;
@@ -213,7 +212,7 @@ export class Props {
     g.traverse((o) => {
       if (o.isMesh) o.castShadow = o.receiveShadow = true;
     });
-    g.position.set(x, 0, z);
+    g.position.set(x, this.yb, z);
     g.rotation.y = ry;
     this.b.groupOf(zone).add(g);
     return g;
@@ -256,9 +255,46 @@ export function itemModel(kind, mats) {
     case 'paper':
       add(new THREE.BoxGeometry(0.16, 0.002, 0.11), mats.paper, 0, 0.001, 0, 0, 0.2, 0);
       break;
-    case 'tape':
-      add(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 20), mats.plastic, 0, 0.01, 0);
+    case 'tape': {
+      add(new THREE.BoxGeometry(0.19, 0.025, 0.1), mats.dark, 0, 0.013, 0);
+      add(new THREE.BoxGeometry(0.12, 0.002, 0.05), mats.paper, 0, 0.027, 0.01);
       break;
+    }
+    case 'battery': {
+      add(new THREE.CylinderGeometry(0.017, 0.017, 0.065, 12), new THREE.MeshStandardMaterial({ color: 0x2a6a3a, roughness: 0.4, metalness: 0.3 }), 0, 0.017, 0, 0, 0, Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.008, 0.008, 0.008, 8), mats.metal, 0.036, 0.017, 0, 0, 0, Math.PI / 2);
+      break;
+    }
+    case 'stim': {
+      add(new THREE.CylinderGeometry(0.012, 0.012, 0.1, 10), new THREE.MeshStandardMaterial({ color: 0xd8f0ff, roughness: 0.1, transparent: true, opacity: 0.6 }), 0, 0.012, 0, 0, 0, Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8), new THREE.MeshStandardMaterial({ color: 0xff4020, emissive: 0x501008 }), 0, 0.012, 0, 0, 0, Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.0015, 0.0015, 0.05, 4), mats.metal, 0.075, 0.012, 0, 0, 0, Math.PI / 2);
+      break;
+    }
+    case 'bottle': {
+      const glass = new THREE.MeshStandardMaterial({ color: 0x3a5a2a, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.75 });
+      add(new THREE.CylinderGeometry(0.035, 0.035, 0.2, 12), glass, 0, 0.1, 0);
+      add(new THREE.CylinderGeometry(0.012, 0.03, 0.08, 10), glass, 0, 0.24, 0);
+      break;
+    }
+    case 'filter': {
+      add(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 14), mats.metalDark, 0, 0.03, 0);
+      add(new THREE.CylinderGeometry(0.02, 0.02, 0.02, 10), mats.metal, 0, 0.07, 0);
+      break;
+    }
+    case 'gasmask': {
+      const rubber = new THREE.MeshStandardMaterial({ color: 0x2a2e26, roughness: 0.7 });
+      add(new THREE.SphereGeometry(0.1, 14, 10, 0, Math.PI * 2, 0, Math.PI / 1.6), rubber, 0, 0.05, 0, -Math.PI / 2, 0, 0);
+      for (const s of [-1, 1]) add(new THREE.CircleGeometry(0.03, 12), new THREE.MeshStandardMaterial({ color: 0x8aa8a0, roughness: 0.05, metalness: 0.4 }), s * 0.04, 0.09, 0.03, -1.2, 0, 0);
+      add(new THREE.CylinderGeometry(0.035, 0.04, 0.07, 12), mats.metalDark, 0, 0.04, 0.11, Math.PI / 2, 0, 0);
+      break;
+    }
+    case 'cutters': {
+      add(new THREE.BoxGeometry(0.5, 0.025, 0.03), mats.doorRed, -0.05, 0.015, -0.03, 0, 0.08, 0);
+      add(new THREE.BoxGeometry(0.5, 0.025, 0.03), mats.doorRed, -0.05, 0.015, 0.03, 0, -0.08, 0);
+      add(new THREE.BoxGeometry(0.12, 0.03, 0.05), mats.metal, 0.25, 0.015, 0);
+      break;
+    }
     case 'note':
       add(new THREE.BoxGeometry(0.21, 0.002, 0.29), mats.paper, 0, 0.001, 0, 0, 0.15, 0);
       break;

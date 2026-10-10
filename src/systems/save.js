@@ -123,7 +123,13 @@ export const DEFAULT_SETTINGS = {
     journal: 'KeyJ',
     drop: 'KeyG',
     screenshot: 'KeyP',
+    crouch: 'KeyC',
+    reload: 'KeyR',
+    stim: 'KeyQ',
+    throw: 'KeyT',
+    mask: 'KeyM',
   },
+  scares: true,
 };
 
 export function loadProfile() {
@@ -139,6 +145,7 @@ export function loadProfile() {
   p.endings = Array.isArray(p.endings) ? p.endings : [];
   p.foreignCodes = Array.isArray(p.foreignCodes) ? p.foreignCodes : [];
   p.runs = p.runs || 0;
+  p.tapes = Array.isArray(p.tapes) ? p.tapes : [];
   return p;
 }
 

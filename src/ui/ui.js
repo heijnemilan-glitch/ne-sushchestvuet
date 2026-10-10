@@ -30,6 +30,19 @@ const KEY_NAMES = {
   journal: 'Журнал',
   drop: 'Положить предмет',
   screenshot: 'Снимок экрана',
+  crouch: 'Присесть',
+  reload: 'Заменить батарейку',
+  stim: 'Стимулятор',
+  throw: 'Бросить бутылку',
+  mask: 'Противогаз',
+};
+
+const QUALITY_NAMES = { low: 'Низкая', medium: 'Средняя', high: 'Высокая', ultra: 'Ультра' };
+const QUALITY_HINT = {
+  low: 'для слабых ПК: без эффектов, 4 источника света',
+  medium: 'свечение и зерно плёнки, 6 источников света',
+  high: 'тени от фонаря, 8 источников света',
+  ultra: 'для мощных ПК: максимум света, пыли и чёткости',
 };
 
 // Сайт игры — туда ведёт «Поделиться моментом».
@@ -61,6 +74,15 @@ export class UI {
         <div id="examine-ui" class="hidden"><div class="t"></div><div class="d"></div><div class="h">Мышь — вращать · [E] или [Esc] — убрать</div></div>
       </div>
       <div id="locker-ov" class="layer hidden"><div class="locker-hint">Вы в шкафчике · [E] — выйти · не шумите</div></div>
+      <div id="toxic-ov" class="layer"></div>
+      <div id="mask-ov" class="layer hidden"></div>
+      <div id="surv" class="hidden">
+        <div class="sv-row"><span class="sv-ico">◐</span><div class="sv-bar"><i id="sv-bat"></i></div><span id="sv-batn" class="sv-n"></span></div>
+        <div class="sv-row" id="sv-stam-row"><span class="sv-ico">»</span><div class="sv-bar stam"><i id="sv-stam"></i></div></div>
+        <div class="sv-row" id="sv-mask-row"><span class="sv-ico">◎</span><span id="sv-mask" class="sv-n"></span></div>
+        <div class="sv-items" id="sv-items"></div>
+      </div>
+      <div id="tape" class="layer hidden"><div class="lb top"></div><div class="lb bottom"></div><div class="tape-rec mono">▶ PLAY</div><div class="tape-date mono"></div><div class="tape-title mono"></div><div class="tape-sub"></div><div class="tape-skip">Esc — пропустить</div></div>
       <div id="cine" class="layer hidden"><div class="cine-text"></div></div>
       <div id="lockhint" class="hidden">Щёлкните, чтобы продолжить</div>
       <div id="modal" class="screen hidden"></div>
@@ -91,6 +113,11 @@ export class UI {
   // ── HUD ───────────────────────────────────────────────────────────────────
   showHUD(on) {
     this.el.hud.classList.toggle('hidden', !on);
+    if (!on) {
+      $('#surv').classList.add('hidden');
+      $('#mask-ov').classList.add('hidden');
+      $('#toxic-ov').style.opacity = '0';
+    }
   }
 
   setPrompt(text, code) {
@@ -132,6 +159,66 @@ export class UI {
     $('#locker-ov').classList.toggle('hidden', !on);
   }
 
+  // затемнение на время подъёма/спуска по лестнице
+  fadeSoft(on) {
+    this.el.fade.style.opacity = on ? '0.88' : '0';
+  }
+
+  // HUD выживания: заряд фонаря, выносливость, фильтр, расходники
+  setSurvival(s) {
+    const g = this.game;
+    const box = $('#surv');
+    box.classList.toggle('hidden', !g.inv.has('flashlight') || g.state !== 'playing');
+    const bat = Math.round(s.battery);
+    const bi = $('#sv-bat');
+    bi.style.width = `${bat}%`;
+    bi.classList.toggle('low', bat < 20);
+    $('#sv-batn').textContent = `${bat}%`;
+    $('#sv-stam').style.width = `${Math.round(s.stamina)}%`;
+    $('#sv-stam').classList.toggle('stim', s.stimTime > 0);
+    $('#sv-stam-row').style.opacity = s.stamina < 99 || s.stimTime > 0 ? '1' : '0';
+    const mask = g.inv.has('gasmask');
+    $('#sv-mask-row').style.display = mask ? '' : 'none';
+    if (mask) $('#sv-mask').textContent = `${s.maskOn ? 'надет' : 'снят'} · фильтр ${Math.ceil(g.world.get('filterTime', 0))} с · запас ${g.inv.count('filter')}`;
+    const k = g.settings.keys;
+    const items = [
+      ['battery', 'Батарейки', k.reload],
+      ['stim', 'Стимуляторы', k.stim],
+      ['bottle', 'Бутылки', k.throw],
+    ]
+      .filter(([id]) => g.inv.count(id) > 0)
+      .map(([id, n, key]) => `<span>${n} ×${g.inv.count(id)} <kbd>${keyLabel(key)}</kbd></span>`)
+      .join('');
+    if (items !== this._items) {
+      this._items = items;
+      $('#sv-items').innerHTML = items;
+    }
+    $('#mask-ov').classList.toggle('hidden', !s.maskOn || g.state !== 'playing');
+    $('#toxic-ov').style.opacity = String(s.toxicLevel * 0.85);
+  }
+
+  // ── кассеты (ролики лора) ──
+  showTape(title, date) {
+    const t = $('#tape');
+    $('.tape-title', t).textContent = title;
+    $('.tape-date', t).textContent = date;
+    $('.tape-sub', t).innerHTML = '';
+    t.classList.remove('hidden');
+    this.el.menu.classList.add('hidden');
+    this.showHUD(false);
+    this.showLockHint(false);
+  }
+
+  tapeLines(lines) {
+    const s = $('#tape .tape-sub');
+    s.innerHTML = lines.map((l, i) => `<p style="animation-delay:${i * 1.2}s">${esc(l)}</p>`).join('');
+  }
+
+  hideTape() {
+    $('#tape').classList.add('hidden');
+    if (this.game.state === 'playing' || this.game.inGame) this.showHUD(true);
+  }
+
   // Кинематографичные строки на чёрном фоне (вступление, поимка).
   cinematic(lines, { hold = 1.6, red = false } = {}) {
     const box = $('#cine');
@@ -169,7 +256,7 @@ export class UI {
   setHelp(show) {
     const k = this.game.settings.keys;
     this.el.helpline.innerHTML = show
-      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">${keyLabel(k.screenshot)}</span>снимок · <span class="kbd">Esc</span>пауза`
+      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">${keyLabel(k.screenshot)}</span>снимок · <span class="kbd">Esc</span>пауза<br><span class="kbd">Shift</span>бег · <span class="kbd">${keyLabel(k.crouch)}</span>присесть · <span class="kbd">${keyLabel(k.reload)}</span>батарейка · <span class="kbd">${keyLabel(k.stim)}</span>стимулятор · <span class="kbd">${keyLabel(k.throw)}</span>бросить · <span class="kbd">${keyLabel(k.mask)}</span>противогаз`
       : '';
   }
 
@@ -226,10 +313,12 @@ export class UI {
         <button class="menu-item" data-a="continue" ${last ? '' : 'disabled'}>Продолжить</button>
         <button class="menu-item" data-a="new">Новая игра</button>
         <button class="menu-item" data-a="load">Выбрать сохранение</button>
+        <button class="menu-item" data-a="gfx">Графика: <b>${QUALITY_NAMES[g.settings.quality] || 'Средняя'}</b> <span class="gfx-hint">— ${QUALITY_HINT[g.settings.quality] || ''}</span></button>
         <button class="menu-item" data-a="settings">Настройки</button>
+        <button class="menu-item" data-a="tapes">Кассеты <span class="gfx-hint">(${g.profile.tapes.length}/4)</span></button>
         <button class="menu-item" data-a="codes">Коды открытий</button>
         <button class="menu-item" data-a="exit">Выход</button>
-        <div class="foot">Игра работает без интернета. Прогресс хранится в этом браузере; сохранения можно выгрузить в файл.<br>Лучше играть в наушниках. ${g.profile.endings.length ? `<br>Найдено исходов: ${g.profile.endings.length}/4.` : ''}</div>
+        <div class="foot">Игра работает без интернета. Прогресс хранится в этом браузере; сохранения можно выгрузить в файл.<br>Лучше играть в наушниках. ${g.profile.endings.length ? `<br>Найдено исходов: ${g.profile.endings.length}/6.` : ''}</div>
       </div>`;
     m.classList.remove('hidden');
     this.el.ending.classList.add('hidden');
@@ -244,6 +333,13 @@ export class UI {
         if (a === 'load') this.showSaves('load', () => this.showMenu());
         if (a === 'settings') this.showSettings(() => this.showMenu());
         if (a === 'codes') this.showCodesScreen(() => this.showMenu());
+        if (a === 'gfx') {
+          const order = ['low', 'medium', 'high', 'ultra'];
+          g.settings.quality = order[(order.indexOf(g.settings.quality) + 1) % order.length];
+          g.applySettings();
+          this.showMenu();
+        }
+        if (a === 'tapes') this.showTapes();
         if (a === 'exit') this.showExit();
       })
     );
@@ -251,6 +347,30 @@ export class UI {
 
   hideMenu() {
     this.el.menu.classList.add('hidden');
+  }
+
+  showTapes() {
+    const g = this.game;
+    const names = { 1: 'Институт', 2: 'Затопление', 3: 'Оператор', 4: 'Испытуемый 0' };
+    const rows = [1, 2, 3, 4]
+      .map((n) =>
+        g.profile.tapes.includes(n)
+          ? `<button class="menu-item" data-tape="${n}">▶ Кассета ${n} · «${names[n]}»</button>`
+          : `<div class="menu-item" style="opacity:.3;cursor:default">■ Кассета ${n} · не найдена</div>`
+      )
+      .join('');
+    const html = `<div class="panel" style="width:min(480px,92vw)"><header>Кассеты<button class="x" data-close>×</button></header>
+      <div class="body" style="display:flex;flex-direction:column;gap:2px">${rows}<p class="empty" style="margin-top:12px">Кассеты спрятаны в комплексе. Найденные можно пересмотреть здесь.</p></div></div>`;
+    const el = this.openModal('tapes', html, () => this.showMenu());
+    el.querySelectorAll('[data-tape]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.modal = null;
+        this.back = null;
+        this.el.modal.classList.add('hidden');
+        g.audio.init();
+        g.lore.play(+b.dataset.tape);
+      })
+    );
   }
 
   confirmNew() {
@@ -415,7 +535,9 @@ export class UI {
       <div class="row"><label>Качество</label><select data-k="quality">
         <option value="low" ${s.quality === 'low' ? 'selected' : ''}>Низкое (без теней, 4 источника)</option>
         <option value="medium" ${s.quality === 'medium' ? 'selected' : ''}>Среднее (6 источников)</option>
-        <option value="high" ${s.quality === 'high' ? 'selected' : ''}>Высокое (тени фонаря, 8 источников)</option></select><span></span></div>
+        <option value="high" ${s.quality === 'high' ? 'selected' : ''}>Высокое (тени фонаря, 8 источников)</option>
+        <option value="ultra" ${s.quality === 'ultra' ? 'selected' : ''}>Ультра (для мощных ПК)</option></select><span></span></div>
+      <div class="row"><label>Скримеры</label><select data-k="scares"><option value="true">Включены</option><option value="false" ${s.scares === false ? 'selected' : ''}>Выключены</option></select><span></span></div>
       ${range('resScale', 'Разрешение рендера', 0.5, 1, 0.05)}
       ${range('fov', 'Поле зрения', 60, 95, 1, (v) => Math.round(v) + '°')}
       <div class="row"><label>Полноэкранный режим</label><button class="btn" id="fs">Переключить</button><span></span></div>

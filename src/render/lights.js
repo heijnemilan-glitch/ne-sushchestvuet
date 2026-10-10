@@ -62,9 +62,10 @@ export class LightPool {
       const dx = a.x - pos.x;
       const dy = a.y - pos.y;
       const dz = a.z - pos.z;
-      if (Math.abs(dy) > 5) continue;
-      const d2 = dx * dx + dz * dz + dy * dy * 4;
-      if (d2 > 26 * 26) continue;
+      if (Math.abs(dy) > 8) continue;
+      // лампы своей комнаты важнее ламп за стеной; в больших залах дальние лампы тоже нужны
+      const d2 = dx * dx + dz * dz + dy * dy * 1.5 + (this.zoneId && a.zone !== this.zoneId ? 220 : 0);
+      if (d2 > 30 * 30) continue;
       if (!a.isOn() && !a.fixtureMat) continue;
       // bias — лампы, которые важно видеть издалека (например, комната за стеклом)
       cands.push({ a, d2: (a.isOn() ? d2 : d2 + 1e4) - (a.bias || 0) });
@@ -94,7 +95,7 @@ export class LightPool {
 
 // Фонарь игрока: SpotLight, прикреплённый к камере. Тени — только на высоком качестве.
 export function createFlashlight(camera, scene, quality) {
-  const spot = new THREE.SpotLight(0xfff1dc, 0, 22, Math.PI / 7.5, 0.45, 1.6);
+  const spot = new THREE.SpotLight(0xfff1dc, 0, 30, Math.PI / 7, 0.5, 1.5);
   spot.position.set(0.18, -0.12, 0.05);
   spot.target.position.set(0.05, -0.05, -3);
   camera.add(spot);

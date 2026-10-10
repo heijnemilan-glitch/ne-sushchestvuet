@@ -76,6 +76,7 @@ export class Builder {
       fog: opts.fog || null,
       map: opts.map || null, // { level, x0, z0, x1, z1 } — как комната выглядит на карте
       priority: opts.priority || 0,
+      crouch: !!opts.crouch,
       cullGroup: opts.cullGroup || id,
     };
     this.zones.push(z);

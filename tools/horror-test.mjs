@@ -54,7 +54,7 @@ await sleep(200);
 await page.shot(join(dir, 'h-locker.png'));
 await page.eval('NS.monster.pos.set(0, 0, -6); NS.monster.yaw = Math.PI; step(60); true');
 check('в шкафчике монстр не видит', await page.eval('NS.monster.state !== "chase"'), await page.eval('NS.monster.state'));
-await page.eval('NS.toggleHide(NS.player.hiddenIn), true');
+await page.eval('NS.toggleHide(NS.player.hiddenIn), step(60), true');
 check('выход из шкафчика', await page.eval('!NS.player.hiddenIn'));
 
 // поимка → возрождение в комнате пробуждения
@@ -62,8 +62,9 @@ await page.eval(`(() => { NS.monster.cool = 0; NS.monster.pos.set(0, 0, -9); NS.
 check('поимка срабатывает', (await page.eval('NS.state')) === 'caught', await page.eval('NS.state'));
 await sleep(500);
 await page.shot(join(dir, 'h-caught.png'));
+await page.send('Page.bringToFront');
 await page.wait('NS.state === "playing"', 20000).catch(() => {});
-check('возрождение в комнате пробуждения', await page.eval('NS.state === "playing" && NS.currentZone.id === "start"'));
+check('возрождение в комнате пробуждения', await page.eval('NS.state === "playing" && NS.currentZone.id === "start"'), await page.eval('NS.state + " " + NS.currentZone.id'));
 check('смерть записана в память', (await page.eval('NS.mem.get("deaths")')) === 1);
 
 // виды для сайта/проверки

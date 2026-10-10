@@ -25,14 +25,19 @@ import { UI } from './ui/ui.js';
 import { PostFX } from './render/post.js';
 import { loadModels } from './world/models.js';
 import { Monster } from './systems/monster.js';
+import { SurvivalSystem } from './systems/survival.js';
+import { BoatSystem } from './systems/boat.js';
+import { Scares } from './systems/scares.js';
+import { LoreSystem } from './systems/lore.js';
 
 const QUALITY = {
-  low: { lights: 4, dust: 0, antialias: false, shadows: false },
-  medium: { lights: 6, dust: 260, antialias: false, shadows: false },
-  high: { lights: 8, dust: 480, antialias: false, shadows: true },
+  low: { lights: 4, dust: 0, antialias: false, shadows: false, post: false, res: 0.7 },
+  medium: { lights: 6, dust: 260, antialias: false, shadows: false, post: true, res: 0.85 },
+  high: { lights: 8, dust: 480, antialias: false, shadows: true, post: true, res: 1 },
+  ultra: { lights: 10, dust: 800, antialias: false, shadows: true, post: true, res: 1 },
 };
 const FOG = { color: 0x040505, density: 0.075 };
-const AMBIENT = 0.3;
+const AMBIENT = 0.42;
 
 class Game {
   constructor() {
@@ -96,7 +101,8 @@ class Game {
   }
 
   resize() {
-    const s = this.settings.resScale || 1;
+    const q = QUALITY[this.settings.quality] || QUALITY.medium;
+    const s = Math.min(this.settings.resScale || 1, q.res);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * s);
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
@@ -155,6 +161,10 @@ class Game {
     });
     this.rules.registerAll(RULES);
     this.monster = new Monster(this);
+    this.survival = new SurvivalSystem(this);
+    this.boat = new BoatSystem(this);
+    this.scares = new Scares(this);
+    this.lore = new LoreSystem(this);
     const q = QUALITY[this.settings.quality] || QUALITY.medium;
     this.lightPool = new LightPool(this.scene, this.builder.lights, q.lights);
     if (this.flashlight) {
@@ -201,7 +211,15 @@ class Game {
       if (e.id === 'glass' && e.visits === 1) this.addCode('glass_room');
       if (e.id === 'lab' && e.visits === 1) mem.observe('lab', 'Внизу — лаборатория. Белый кафель. Лампы гудят на другой частоте.');
       if (e.id === 'void' && e.visits === 1) this.fx.distort(1);
+      if (e.id === 'pump' && e.visits === 1) this.addCode('boat');
+      if (e.id === 'sewer' && e.visits === 1) mem.observe('sewer', 'Под котельной — канализация. Пахнет тухлыми яйцами. Где-то в темноте течёт вода и что-то дышит.');
+      if (e.id === 'outside' && this.world.get('grateCut')) {
+        setTimeout(() => this.state === 'playing' && this.ending('ending_escape'), 3500);
+      }
       if (this.mem.data.playTime - this.lastAutosave > 25) this.autosave();
+    });
+    bus.on('item:pickup', (e) => {
+      if (/^tape\d$/.test(e.id) && ['tape1', 'tape2', 'tape3', 'tape4'].every((t) => this.inv.has(t))) this.addCode('all_tapes');
     });
     bus.on('rule:discovered', (e) => {
       this.audio.play('rule');
@@ -438,6 +456,10 @@ class Game {
     }
     const k = this.settings.keys;
     if (e.code === 'Tab') e.preventDefault();
+    if (this.state === 'cinematic') {
+      if (down && (e.code === 'Escape' || e.code === 'Space' || e.code === 'Enter')) this.lore.skip();
+      return;
+    }
     if (this.state !== 'playing') return;
     if (!down) {
       this.player.keys.delete(e.code);
@@ -480,8 +502,14 @@ class Game {
       if (e.code === k.interact) this.toggleHide(this.player.hiddenIn);
       return;
     }
-    if (e.code === k.interact) this.interaction.interact();
-    else if (e.code === k.flashlight) this.toggleFlashlight();
+    if (e.code === k.flashlight) return this.toggleFlashlight();
+    if (e.code === k.mask) return this.survival.toggleMask();
+    if (e.code === k.reload) return this.survival.swapBattery();
+    if (this.survival.busy || this.boat.riding) return;
+    if (e.code === k.crouch) this.player.crouchToggle = !this.player.crouchToggle;
+    else if (e.code === k.stim) this.survival.useStim();
+    else if (e.code === k.throw) this.survival.throwBottle();
+    else if (e.code === k.interact) this.interaction.interact();
     else if (e.code === k.inventory || e.code === 'KeyI') ui.showInventory();
     else if (e.code === k.journal) ui.showJournal('notes');
     else if (e.code === k.drop) this.quickDrop();
@@ -595,8 +623,15 @@ class Game {
     this.resize();
     const q = QUALITY[s.quality] || QUALITY.medium;
     if (this.lightPool && this.lightPool.lights.length !== q.lights) this.lightPool.setCount(q.lights);
-    if (this.flashlight) this.flashlight.castShadow = q.shadows;
+    if (this.flashlight) {
+      this.flashlight.castShadow = q.shadows;
+      this.flashlight.shadow.mapSize.set(s.quality === 'ultra' ? 2048 : 1024, s.quality === 'ultra' ? 2048 : 1024);
+    }
     this.renderer.shadowMap.enabled = q.shadows;
+    if (this.post) {
+      this.post.enabled = q.post;
+      this.post.bloom.strength = s.quality === 'ultra' ? 0.85 : s.quality === 'high' ? 0.75 : 0.6;
+    }
     if (this.scene) {
       if (q.dust && !this.dust) this.dust = new Dust(this.scene, q.dust);
       if (this.dust) this.dust.setVisible(!!q.dust);
@@ -636,6 +671,10 @@ class Game {
     try {
       if (this.state === 'playing' && !this.paused) this.update(dt);
       else if (this.state === 'caught') this.updateCaught(dt);
+      else if (this.state === 'cinematic') {
+        this.time += dt;
+        this.lore.update(dt);
+      }
       else if (this.state === 'ending') this.level.update(dt * 0.3, (this.time += dt));
       else if (this.state === 'menu' && this.menuCam) this.updateMenu(dt);
     } catch (err) {
@@ -665,25 +704,85 @@ class Game {
   }
 
   // ── шкафчики ──────────────────────────────────────────────────────────────
+  // Залезть/вылезти: дверца открывается на петле, камера плавно заходит внутрь, дверца закрывается.
   toggleHide(locker) {
     const p = this.player;
+    if (this.lockerAnim) return;
     this.audio.play('locker');
-    if (p.hiddenIn) {
-      const l = p.hiddenIn;
-      p.hiddenIn = null;
-      l.door.visible = true;
-      p.setPose({ x: l.front.x, y: 0, z: l.front.z, yaw: l.yaw, pitch: 0 });
-      this.ui.showLocker(false);
+    // скример: из одного шкафчика вываливается труп
+    if (!p.hiddenIn && locker.corpse && !this.world.get('corpseFell')) {
+      this.world.set('corpseFell', true);
+      this.lockerAnim = { t: 0, dur: 0.5, locker, mode: 'corpse' };
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.2, 6, 10), new THREE.MeshStandardMaterial({ color: 0x2a2c2a, roughness: 0.6 }));
+      body.position.copy(locker.inside).add(new THREE.Vector3(0, 0.95, 0));
+      body.rotation.y = locker.yaw;
+      this.scene.add(body);
+      this.lockerAnim.body = body;
+      this.audio.play('stinger');
+      this.audio.play('body_drop', locker.front.clone());
+      this.fx.distort(0.8);
+      this.mem.observe('corpse', 'Из шкафчика на меня вывалилось тело. Холодное. На бирке — «Испытуемый». Без номера.');
       return;
     }
+    if (p.hiddenIn) {
+      const l = p.hiddenIn;
+      this.lockerAnim = { t: 0, dur: 0.55, locker: l, mode: 'out', from: p.pos.clone() };
+      return;
+    }
+    if (this.player.crouchToggle) this.player.crouchToggle = false;
+    this.lockerAnim = { t: 0, dur: 0.65, locker, mode: 'in', from: p.pos.clone(), fromYaw: p.yaw };
     p.hiddenIn = locker;
-    locker.door.visible = false;
-    p.yaw = locker.yaw;
-    p.pitch = 0;
+    locker.animating = true;
     this.flashlightOn = false;
-    this.ui.showLocker(true);
     this.mem.count('hid');
     if (this.mem.get('hid') === 1) this.mem.observe('hid', 'Я спрятался в шкафчик. Сквозь щели видно коридор. Дыхание кажется слишком громким.');
+  }
+
+  updateLockerAnim(dt) {
+    const a = this.lockerAnim;
+    const p = this.player;
+    const l = a.locker;
+    a.t += dt;
+    const k = Math.min(1, a.t / a.dur);
+    const swing = Math.sin(k * Math.PI); // дверца: открылась и закрылась
+    if (a.mode === 'corpse') {
+      l.hinge.rotation.y = -1.9 * Math.min(1, k * 3);
+      const fall = Math.min(1, k * 1.6);
+      a.body.position.lerpVectors(l.inside.clone().add(new THREE.Vector3(0, 0.95, 0)), l.front.clone().add(new THREE.Vector3(0, 0.25, 0)), fall);
+      a.body.rotation.set(0, l.yaw, 0);
+      a.body.rotateX(-fall * Math.PI / 2);
+      if (k >= 1) {
+        this.lockerAnim = null;
+        setTimeout(() => (l.hinge.rotation.y = -1.2), 100);
+      }
+      return;
+    }
+    l.hinge.rotation.y = -1.6 * swing;
+    if (a.mode === 'in') {
+      const e = k * k * (3 - 2 * k);
+      p.pos.lerpVectors(a.from, l.inside, e);
+      let dy = l.yaw - a.fromYaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      p.yaw = a.fromYaw + dy * e;
+      p.pitch *= 0.85;
+      p.applyCamera(dt);
+      if (k > 0.75) this.ui.showLocker(true);
+      if (k >= 1) {
+        l.animating = false;
+        l.hinge.rotation.y = 0;
+        this.lockerAnim = null;
+      }
+    } else {
+      const e = k * k * (3 - 2 * k);
+      p.pos.lerpVectors(a.from, l.front, e);
+      p.applyCamera(dt);
+      if (k > 0.2) this.ui.showLocker(false);
+      if (k >= 1) {
+        p.hiddenIn = null;
+        l.hinge.rotation.y = 0;
+        this.lockerAnim = null;
+      }
+    }
   }
 
   // ── поимка ────────────────────────────────────────────────────────────────
@@ -693,10 +792,13 @@ class Game {
     this.caught = { t: 0, monster, pulledOut, done: false };
     this.player.keys.clear();
     if (this.player.hiddenIn) {
-      this.player.hiddenIn.door.visible = true;
+      this.player.hiddenIn.animating = false;
+      this.player.hiddenIn.hinge.rotation.y = -1.7; // дверцу распахнули
       this.player.hiddenIn = null;
+      this.lockerAnim = null;
       this.ui.showLocker(false);
     }
+    if (this.boat.riding) this.boat.abort();
     this.audio.play('catch');
     this.audio.setChase(0);
     this.ui.setPrompt(null);
@@ -760,13 +862,19 @@ class Game {
   update(dt) {
     this.time += dt;
     const t = this.time;
-    const active = !this.examining;
-    this.player.update(dt, active);
+    const moving = !this.survival.busy && !this.boat.riding && !this.lockerAnim;
+    const active = !this.examining && moving;
+    if (this.lockerAnim) this.updateLockerAnim(dt);
+    else if (moving) this.player.update(dt, active);
+    this.survival.update(dt);
+    this.boat.update(dt);
+    if (this.state !== 'playing') return;
     this.level.update(dt, t);
     this.updateZone(false);
     this.mem.tick(dt);
     this.entities.update(dt);
     this.monster.update(dt);
+    this.scares.update(dt);
     if (this.state !== 'playing') return; // поймали в этом кадре
     this.puzzles.update(dt);
     // страх: сердцебиение, музыка погони, искажения кадра
@@ -790,7 +898,12 @@ class Game {
     else this.ui.setPrompt(null);
     // фонарь
     const fl = this.flashlightOn && this.inv.has('flashlight');
-    const target = fl ? 26 : 0;
+    let target = fl ? 58 : 0;
+    // в узкой шахте стены в полуметре — полный луч засвечивает всё в белое
+    if (this.currentZone && this.currentZone.crouch) target *= 0.22;
+    // севшая батарейка: фонарь тускнеет и мигает
+    const bat = this.survival.battery;
+    if (fl && bat < 20) target *= 0.35 + (bat / 20) * 0.65 * (Math.sin(t * 17) * Math.sin(t * 5.3) > 0.6 ? 0.15 : 1);
     this.flashlight.intensity += (target - this.flashlight.intensity) * Math.min(1, dt * 18);
     if (this.examining && !fl) this.flashlight.intensity = 6;
     this.lightPool.update(dt, this.player.pos, t);
@@ -848,6 +961,10 @@ class Game {
     if (!z || (z === this.currentZone && !force)) return;
     const prevMem = this.currentZone && this.currentZone.memoryId;
     this.currentZone = z;
+    if (this.lightPool) {
+      this.lightPool.zoneId = z.id;
+      this.lightPool.timer = 0;
+    }
     this.audio.setZone(z.ambience, force);
     if (force && this.mem.data.currentRoom === z.memoryId) return;
     if (prevMem !== z.memoryId || force) {

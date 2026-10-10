@@ -12,11 +12,11 @@ import { makeCreature } from '../world/models.js';
 import { rayBox } from './interaction.js';
 
 const CELL = 0.5;
-const BOUNDS = { x0: -26, x1: 26, z0: -35, z1: 8 };
-const SAFE = new Set(['start', 'waiting', 'vestibule', 'elevator', 'stairs', 'room07', 'reflection', 'glass']);
+const BOUNDS = { x0: -34, x1: 32, z0: -50, z1: 8 };
+const SAFE = new Set(['start', 'waiting', 'vestibule', 'elevator', 'stairs', 'room07', 'reflection', 'glass', 'vent', 'observation']);
 const PATROL = [
-  [0, -4], [0, -12], [0, -19], [-6, -8], [-12.5, -8], [-17, -6], [-21.5, -8], [-17, -12], [6, -8], [12.5, -8],
-  [16, -6], [19, -10], [22.5, -11], [0, -24], [-4, -30], [4, -30], [-8, -26], [-13, -30], [-11, -23.5],
+  [0, -4], [0, -12], [0, -20], [-7, -8], [-14, -8], [-19, -5], [-22.5, -9], [-20, -13], [7, -8], [14, -8],
+  [18, -5], [21, -11], [19, -17], [0, -27], [-6, -33], [6, -40], [0, -43], [-7, -46], [6, -46], [-4, -30],
 ];
 
 class Grid {
@@ -224,6 +224,11 @@ export class Monster {
     this.play('idle');
     game.bus.on('door:opened', (e) => this.hearDoor(e.id));
     game.bus.on('door:state', (e) => !e.open && this.hearDoor(e.id));
+    // бутылка, крик и прочий шум
+    game.bus.on('noise', (e) => {
+      if (this.state === 'dormant' || this.state === 'chase' || Math.abs(e.y - this.pos.y) > 2) return;
+      if (Math.hypot(e.x - this.pos.x, e.z - this.pos.z) < e.r) this.investigate(e.x, e.z);
+    });
     if (this.state !== 'dormant') this.wake(true);
   }
 
@@ -310,7 +315,7 @@ export class Monster {
     if (p.hiddenIn || !p.moving) return false;
     const d = Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
     if (Math.abs(p.pos.y - this.pos.y) > 1.2) return false;
-    return p.sprinting ? d < 13 : d < 4;
+    return p.sprinting ? d < 13 : p.crouching ? d < 1.8 : d < 4;
   }
 
   update(dt) {
@@ -410,6 +415,7 @@ export class Monster {
   }
 
   moveAlong(dt, speed) {
+    this.c.root.rotation.y = 0;
     if (!this.path.length) {
       this.play('idle', 0.7);
       return;

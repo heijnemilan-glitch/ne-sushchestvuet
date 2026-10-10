@@ -97,7 +97,7 @@ h2 { font-weight: 400; font-size: clamp(28px, 3.4vw, 42px); line-height: 1.15; m
 h3 { font-weight: 500; font-size: 19px; margin: 0 0 8px; }
 .split { display: grid; grid-template-columns: 1fr 1.4fr; gap: 48px; align-items: start; }
 .big { font-size: 19px; color: #c8cec6; font-weight: 300; margin: 0; }
-.features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 64px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 64px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .feature { background: var(--bg); padding: 28px 24px 30px; }
 .feature p, .who p { color: var(--dim); margin: 0; font-size: 15px; }
 .num { display: block; color: var(--faint); font-size: 13px; margin-bottom: 26px; }

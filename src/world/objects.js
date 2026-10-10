@@ -243,6 +243,51 @@ export class Pickup extends Interactable {
   }
 }
 
+// ── РАСХОДНИК (батарейка, стимулятор, бутылка, фильтр) ───────────────────────
+export const SUPPLY_NAMES = { battery: 'Батарейка', stim: 'Стимулятор', bottle: 'Бутылка', filter: 'Фильтр противогаза' };
+
+export class Supply extends Interactable {
+  constructor(game, o) {
+    super(game, o.id);
+    this.o = o;
+    this.kind = o.kind;
+    this.mesh = itemModelFor(o.kind, game.mats);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.26), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.06;
+    this.mesh.add(hit);
+    this.mesh.position.set(o.x, o.y, o.z);
+    this.mesh.rotation.y = (o.x * 7.1 + o.z * 3.3) % 6.28;
+    game.builder.groupOf(o.zone).add(this.mesh);
+    this.register(this.mesh);
+    game.world.initItem(o.id, { where: 'world' });
+    this.sync();
+  }
+
+  prompt() {
+    return this.game.world.item(this.id).where === 'world' ? `Взять: ${SUPPLY_NAMES[this.kind]}` : null;
+  }
+
+  interact() {
+    const g = this.game;
+    if (g.world.item(this.id).where !== 'world') return;
+    g.world.setItem(this.id, { where: 'inv' });
+    g.inv.addCount(this.kind, 1);
+    g.audio.play('pickup');
+    g.ui.toast(`+1 ${SUPPLY_NAMES[this.kind]} (всего: ${g.inv.count(this.kind)})`);
+    g.bus.emit('supply:pickup', { kind: this.kind });
+    this.sync();
+  }
+
+  sync() {
+    this.mesh.visible = this.game.world.item(this.id).where === 'world';
+  }
+}
+
+let itemModelFor = () => new THREE.Group();
+export function setItemModelFactory(fn) {
+  itemModelFor = fn;
+}
+
 // ── ЗАПИСКА / ДОКУМЕНТ ───────────────────────────────────────────────────────
 export class Readable extends Interactable {
   constructor(game, o) {

@@ -10,14 +10,12 @@ mkdirSync(out, { recursive: true });
 
 const VIEWS = [
   { name: 'hero', p: [0, 0, -4, 0, 0.02], setup: 'NS.flashlightOn = true; NS.monster.wake(true); NS.monster.pos.set(0,0,-12.5); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.target = NS.monster.pos.clone(); NS.monster.cool = 999;' },
-  { name: 'observation', p: [-9.5, 0, -27, 1.57, 0.08] },
-  { name: 'room07', p: [-65.5, 0, -15, 1.45, -0.05] },
-  { name: 'stairs', p: [10, -0.5, -27, -1.57, -0.32] },
-  { name: 'core', p: [78, 0, 0, 1.57, 0.12] },
-  { name: 'void', p: [0, 0, 101.5, 3.14, 0.02] },
-  { name: 'archive', p: [-15.2, 0, -8.6, 1.25, -0.05], setup: "NS.world.set('power', true);" },
-  { name: 'lab', p: [100, 0, -4.5, 3.14, 0.02] },
-  { name: 'start', p: [-1.6, 0, 6.3, -2.6, -0.12] },
+  { name: 'atrium', p: [0, 0, -25.5, 0, 0.12] },
+  { name: 'boiler', p: [17.5, 0, -10, -1.57, 0.15], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'sewer', p: [23, -8, -20.5, -1.9, -0.05], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'canal', p: [33, -8, -17.2, -1.57, -0.02], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'pump', p: [94.5, -8, -15, -1.57, 0.05], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'archive', p: [-17, 0, -8, 1.3, 0], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
 ];
 
 const edge = await launchEdge({ width: 1600, height: 900 });

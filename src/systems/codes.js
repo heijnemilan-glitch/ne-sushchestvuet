@@ -24,6 +24,10 @@ export const DISCOVERIES = [
   { id: 'stairs_landing', hint: 'Нужный пролёт бесконечной лестницы.' },
   { id: 'room_07', hint: 'Комната за дверью 0-7 больше, чем позволяет здание.' },
   { id: 'glass_room', hint: 'Попал в комнату за смотровым стеклом.' },
+  { id: 'ending_escape', hint: 'Кто-то вышел наружу. Под настоящий дождь.' },
+  { id: 'ending_water', hint: 'Кто-то слишком долго смотрел в воду.' },
+  { id: 'boat', hint: 'Проплыл затопленный тоннель.' },
+  { id: 'all_tapes', hint: 'Собрал все четыре кассеты.' },
 ];
 
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 символа, без похожих 0/O, 1/I
