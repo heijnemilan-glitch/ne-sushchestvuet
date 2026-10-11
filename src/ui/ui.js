@@ -6,6 +6,7 @@ import { roomName } from '../systems/story.js';
 import { SLOTS } from '../systems/save.js';
 import { parseCode, DISCOVERIES } from '../systems/codes.js';
 import { formatTime } from '../core/util.js';
+import { installOldPaper } from './paper.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -35,14 +36,15 @@ const KEY_NAMES = {
   stim: 'Стимулятор',
   throw: 'Бросить бутылку',
   mask: 'Противогаз',
+  map: 'Карта',
 };
 
 const QUALITY_NAMES = { low: 'Низкая', medium: 'Средняя', high: 'Высокая', ultra: 'Ультра' };
 const QUALITY_HINT = {
   low: 'для слабых ПК: без эффектов, 4 источника света',
-  medium: 'свечение и зерно плёнки, 6 источников света',
-  high: 'тени от фонаря, 8 источников света',
-  ultra: 'для мощных ПК: максимум света, пыли и чёткости',
+  medium: 'отражения, лучи света, туман над водой, 6 источников света',
+  high: 'тени от фонаря, мягкие тени в углах, сглаживание, 8 источников',
+  ultra: 'для мощных ПК: всё на максимум, 10 источников света, чёткие текстуры',
 };
 
 // Сайт игры — туда ведёт «Поделиться моментом».
@@ -54,6 +56,7 @@ export class UI {
     this.modal = null;
     this.back = null;
     this.hintTimer = 0;
+    installOldPaper();
     this.build();
   }
 
@@ -76,6 +79,8 @@ export class UI {
       <div id="locker-ov" class="layer hidden"><div class="locker-hint">Вы в шкафчике · [E] — выйти · не шумите</div></div>
       <div id="toxic-ov" class="layer"></div>
       <div id="mask-ov" class="layer hidden"></div>
+      <div id="shock-ov" class="layer"></div>
+      <div id="drown-ov" class="layer"></div>
       <div id="surv" class="hidden">
         <div class="sv-row"><span class="sv-ico">◐</span><div class="sv-bar"><i id="sv-bat"></i></div><span id="sv-batn" class="sv-n"></span></div>
         <div class="sv-row" id="sv-stam-row"><span class="sv-ico">»</span><div class="sv-bar stam"><i id="sv-stam"></i></div></div>
@@ -189,9 +194,12 @@ export class UI {
       .filter(([id]) => g.inv.count(id) > 0)
       .map(([id, n, key]) => `<span>${n} ×${g.inv.count(id)} <kbd>${keyLabel(key)}</kbd></span>`)
       .join('');
-    if (items !== this._items) {
-      this._items = items;
-      $('#sv-items').innerHTML = items;
+    const gun = g.inv.has('shotgun') ? `<span class="gun">Ружьё ${'●'.repeat(g.world.get('gunLoaded', 0))}${'○'.repeat(2 - g.world.get('gunLoaded', 0))} · патронов ${g.inv.count('shells')}</span>` : g.inv.count('shells') ? `<span>Патроны ×${g.inv.count('shells')}</span>` : '';
+    const shards = g.inv.count('shard') ? `<span class="shard">Мнемит ${g.inv.count('shard')}/6</span>` : '';
+    const all = gun + shards + items;
+    if (all !== this._items) {
+      this._items = all;
+      $('#sv-items').innerHTML = all;
     }
     $('#mask-ov').classList.toggle('hidden', !s.maskOn || g.state !== 'playing');
     $('#toxic-ov').style.opacity = String(s.toxicLevel * 0.85);
@@ -256,7 +264,7 @@ export class UI {
   setHelp(show) {
     const k = this.game.settings.keys;
     this.el.helpline.innerHTML = show
-      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">${keyLabel(k.screenshot)}</span>снимок · <span class="kbd">Esc</span>пауза<br><span class="kbd">Shift</span>бег · <span class="kbd">${keyLabel(k.crouch)}</span>присесть · <span class="kbd">${keyLabel(k.reload)}</span>батарейка · <span class="kbd">${keyLabel(k.stim)}</span>стимулятор · <span class="kbd">${keyLabel(k.throw)}</span>бросить · <span class="kbd">${keyLabel(k.mask)}</span>противогаз`
+      ? `<span class="kbd">${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</span>движение · <span class="kbd">${keyLabel(k.interact)}</span>действие · <span class="kbd">${keyLabel(k.flashlight)}</span>фонарь<br><span class="kbd">${keyLabel(k.inventory)}</span>инвентарь · <span class="kbd">${keyLabel(k.journal)}</span>журнал · <span class="kbd">${keyLabel(k.screenshot)}</span>снимок · <span class="kbd">Esc</span>пауза<br><span class="kbd">Shift</span>бег · <span class="kbd">${keyLabel(k.crouch)}</span>присесть · <span class="kbd">${keyLabel(k.reload)}</span>батарейка · <span class="kbd">${keyLabel(k.stim)}</span>стимулятор · <span class="kbd">${keyLabel(k.throw)}</span>бросить · <span class="kbd">${keyLabel(k.mask)}</span>противогаз · <span class="kbd">${keyLabel(k.map)}</span>карта · <span class="kbd">ЛКМ</span>выстрел`
       : '';
   }
 
@@ -318,7 +326,7 @@ export class UI {
         <button class="menu-item" data-a="tapes">Кассеты <span class="gfx-hint">(${g.profile.tapes.length}/4)</span></button>
         <button class="menu-item" data-a="codes">Коды открытий</button>
         <button class="menu-item" data-a="exit">Выход</button>
-        <div class="foot">Игра работает без интернета. Прогресс хранится в этом браузере; сохранения можно выгрузить в файл.<br>Лучше играть в наушниках. ${g.profile.endings.length ? `<br>Найдено исходов: ${g.profile.endings.length}/6.` : ''}</div>
+        <div class="foot">Игра работает без интернета. Прогресс хранится в этом браузере; сохранения можно выгрузить в файл.<br>Лучше играть в наушниках. ${g.profile.endings.length ? `<br>Найдено исходов: ${g.profile.endings.length}/7.` : ''}</div>
       </div>`;
     m.classList.remove('hidden');
     this.el.ending.classList.add('hidden');
@@ -672,6 +680,148 @@ export class UI {
       draw(cz && cz.map ? cz.map.level : '0');
     }
     if (tab === 'codes') this.bindCodes(el, () => this.showJournal('codes', back));
+  }
+
+  // ── бумажная карта комплекса (предмет из изолятора, клавиша M) ────────────
+  showMap() {
+    const g = this.game;
+    const w = g.world;
+    const mem = g.mem;
+    const inv = g.inv;
+    g.audio.play('map_open');
+    const parts = ['part_barrel', 'part_stock', 'part_bolt'].filter((p) => inv.has(p)).length;
+    const gun = inv.has('shotgun');
+    const ck = (done, text) => `<li class="${done ? 'done' : ''}"><span class="box">${done ? '✓' : ''}</span>${text}</li>`;
+    const found = (id) => g.profile.endings.includes(id);
+    const exits = `
+      <h3>КАК ОТСЮДА ВЫБРАТЬСЯ</h3>
+      <div class="exit"><b>1. ГЕРМОВОРОТА</b> <i>центральный пост, на север через тоннель</i>${found('ending_hunter') ? ' <em>✓ пройдено</em>' : ''}
+        <ul>${ck(w.get('power'), 'вернуть питание: 3 предохранителя в подстанции')}${ck(gun, gun ? 'ружьё собрано' : `собрать ружьё в мастерской: ствол, приклад, затвор (${parts}/3)`)}${ck(w.get('monsterDead'), 'убить ОНО — тогда карантин снимется')}</ul></div>
+      <div class="exit"><b>2. ВОДОСТОК</b> <i>люк в подстанции → канализация → лодка</i>${found('ending_escape') ? ' <em>✓ пройдено</em>' : ''}
+        <ul>${ck(inv.has('gasmask'), 'противогаз — в канале газ')}${ck(mem.visited('pump'), 'доплыть на лодке до насосной')}${ck(inv.has('cutters'), 'болторез для решётки (уровень −1, шлюз)')}</ul></div>
+      <div class="exit"><b>3. ЯДРО</b> <i>уровень −1: лифт или лестница</i>${found('ending_shutdown') ? ' <em>✓ пройдено</em>' : ''}
+        <ul>${ck(mem.visited('lab'), 'спуститься в лабораторию')}${ck(mem.solved('gate'), 'открыть шлюз ядра — нужны две плиты')}${ck(w.get('mnemaOff'), 'отключить МНЕМУ')}</ul></div>
+      <p class="rumor">Говорят, выходов больше. Их нет ни на одном плане.<br>Найдено исходов: ${g.profile.endings.length} из 7.</p>
+      <p class="rumor">Осколки мнемита (светятся в темноте): ${g.inv.count('shard')} из 6. Говорят, за них дадут целое состояние.</p>
+      <div class="danger">
+        <p class="${w.get('cableOff') ? 'struck' : ''}">⚡ Северо-западный угол резервуара — вода под током! Рубильник «Линия 2» в подстанции.</p>
+        <p>☠ Газ в канале — без противогаза не входить.</p>
+        <p>✋ ОНО не заходит в воду. Прячься в шкафах.</p>
+      </div>`;
+    const html = `<div class="mapsheet"><span class="close" data-close>закрыть [Esc]</span>
+      <div class="mapgrid"><div class="mapleft"><div class="maptitle">СЕКТОР 0 · ПЛАН ЭВАКУАЦИИ · ЯРУС 0</div><canvas id="papermap" width="900" height="700"></canvas></div><div class="mapright">${exits}</div></div></div>`;
+    const el = this.openModal('map', html);
+    this.drawPaperMap($('#papermap', el));
+  }
+
+  drawPaperMap(canvas) {
+    const g = this.game;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const X0 = -46;
+    const X1 = 48;
+    const Z0 = -63;
+    const Z1 = 9;
+    const sc = Math.min((W - 40) / (X1 - X0), (H - 40) / (Z1 - Z0));
+    const ox = (W - (X1 - X0) * sc) / 2;
+    const oz = (H - (Z1 - Z0) * sc) / 2;
+    const X = (x) => ox + (x - X0) * sc;
+    const Z = (z) => oz + (z - Z0) * sc;
+    const rect = (x0, z0, x1, z1) => [X(x0), Z(z0), (x1 - x0) * sc, (z1 - z0) * sc];
+    const ink = 'rgba(40,36,30,0.85)';
+    // вода резервуара
+    ctx.fillStyle = 'rgba(60,96,110,0.28)';
+    ctx.fillRect(...rect(-14.5, -30.5, 14.5, -3.5));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(...rect(-14.5, -30.5, 14.5, -3.5));
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(40,80,100,0.25)';
+    ctx.lineWidth = 1;
+    for (let i = -40; i < 40; i++) {
+      ctx.beginPath();
+      ctx.moveTo(X(-14.5 + i), Z(-3.5));
+      ctx.lineTo(X(-14.5 + i + 27), Z(-30.5));
+      ctx.stroke();
+    }
+    ctx.restore();
+    // зоны плана (без «невозможных» комнат и без вентиляции)
+    const skip = new Set(['vent', 'surface', 'outside', 'reflection', 'room07', 'elevator']);
+    ctx.font = 'bold 13px "Segoe Print", "Comic Sans MS", cursive';
+    for (const z of g.builder.zones) {
+      if (!z.map || z.map.level !== '0' || z.map.x0 !== undefined || skip.has(z.memoryId)) continue;
+      if (z.id === 'flood' || z.id === 'vest07' || z.id === 'vestW' || z.id === 'vestE' || z.id === 'stairsVest') continue;
+      ctx.fillStyle = z.id === 'corridor' ? 'rgba(120,110,90,0.18)' : 'rgba(230,222,200,0.55)';
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = z.id === 'corridor' ? 1 : 2;
+      ctx.fillRect(...rect(z.x0, z.z0, z.x1, z.z1));
+      ctx.strokeRect(...rect(z.x0, z.z0, z.x1, z.z1));
+    }
+    // затопленный угол под током
+    ctx.fillStyle = g.world.get('cableOff') ? 'rgba(60,96,110,0.35)' : 'rgba(190,40,20,0.35)';
+    ctx.fillRect(...rect(-18, -34, -14.5, -22.4));
+    ctx.fillRect(...rect(-14.5, -34, -8, -30.5));
+    // подписи
+    const label = (t, x, z, size = 13, color = ink) => {
+      ctx.fillStyle = color;
+      ctx.font = `bold ${size}px "Segoe Print", "Comic Sans MS", cursive`;
+      ctx.textAlign = 'center';
+      ctx.fillText(t, X(x), Z(z));
+    };
+    label('ИЗОЛЯТОР', 0, 4.4, 11);
+    label('РЕЗЕРВУАР', 0, -24, 15, 'rgba(30,60,80,0.8)');
+    label('башня', 0, -15.6, 11);
+    label('ЖИЛОЙ БЛОК', -25, -7.5, 11);
+    label('КАЗАРМА', -26, -14, 11);
+    label('АРХИВ', -38, -9, 13);
+    label('ТЕХБЛОК', 25, -7.5, 11);
+    label('ПОДСТАНЦИЯ', 39, -11, 12);
+    label('МАСТЕРСКАЯ', -24, -26, 12);
+    label('ЦЕНТР. ПОСТ', 0, -49, 14);
+    label('лифт', -4, -59.6, 10);
+    label('лестница', 30, -42.6, 11);
+    label('шлюз', 21, -52.6, 11);
+    if (!g.world.get('cableOff')) label('⚡ ТОК!', -12.5, -32.6, 14, 'rgba(170,30,10,0.95)');
+    // карандашные пометки: выходы
+    const mark = (x, z, text, dx = 0, dz = -2.2) => {
+      ctx.strokeStyle = 'rgba(160,30,20,0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(X(x), Z(z), 14, 11, 0.2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(160,30,20,0.95)';
+      ctx.font = 'bold 14px "Segoe Print", "Comic Sans MS", cursive';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, X(x + dx), Z(z + dz));
+    };
+    mark(12.5, -53, '1 → НАВЕРХ', 3, -4);
+    mark(43, -18.4, '2 ↓ водосток', 0, 3.2);
+    mark(0, -61.6, '3 ↓ ядро', 6, 1.6);
+    // игрок
+    const cz = g.currentZone;
+    if (cz && cz.map && cz.map.level === '0' && cz.map.x0 === undefined && g.player.pos.y > -2) {
+      const p = g.player.pos;
+      const t = performance.now() / 300;
+      ctx.fillStyle = 'rgba(20,90,40,0.95)';
+      ctx.beginPath();
+      ctx.arc(X(p.x), Z(p.z), 5 + Math.sin(t) * 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,90,40,0.95)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(X(p.x), Z(p.z));
+      ctx.lineTo(X(p.x) - Math.sin(g.player.yaw) * 16, Z(p.z) - Math.cos(g.player.yaw) * 16);
+      ctx.stroke();
+      ctx.font = 'bold 12px "Segoe Print", "Comic Sans MS", cursive';
+      ctx.fillText('ВЫ ЗДЕСЬ', X(p.x) + 30, Z(p.z) + 4);
+    } else {
+      ctx.fillStyle = 'rgba(120,40,30,0.8)';
+      ctx.font = 'bold 13px "Segoe Print", "Comic Sans MS", cursive';
+      ctx.textAlign = 'left';
+      ctx.fillText('Тебя нет на этом плане.', 16, H - 16);
+    }
   }
 
   drawMap(canvas, level) {

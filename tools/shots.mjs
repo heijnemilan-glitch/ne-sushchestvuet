@@ -9,13 +9,14 @@ const out = join(root, 'site', 'img');
 mkdirSync(out, { recursive: true });
 
 const VIEWS = [
-  { name: 'hero', p: [0, 0, -4, 0, 0.02], setup: 'NS.flashlightOn = true; NS.monster.wake(true); NS.monster.pos.set(0,0,-12.5); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.target = NS.monster.pos.clone(); NS.monster.cool = 999;' },
-  { name: 'atrium', p: [0, 0, -25.5, 0, 0.12] },
-  { name: 'boiler', p: [17.5, 0, -10, -1.57, 0.15], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'hero', p: [16.3, 0, -6.5, 0, 0.02], setup: 'NS.flashlightOn = true; NS.monster.wake(true); NS.monster.pos.set(16.3,0,-14); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.target = NS.monster.pos.clone(); NS.monster.cool = 999;' },
+  { name: 'reservoir', p: [-12, 0, -2, -0.6, -0.1], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'beast', p: [6, 0, -2.4, 0, -0.12], setup: 'NS.flashlightOn = false; NS.monster.pos.set(60,0,60); NS.beast.pos.set(6, -0.9, -4.35); NS.beast.y = -0.9; NS.beast.state = "rise"; NS.beast.timer = -5; NS.beast.yaw = Math.PI;' },
+  { name: 'cable', p: [-16.2, 0, -19, 0.2, -0.25], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60); NS.beast.state = "roam"; NS.beast.y = -3.2; NS.beast.pos.set(10, -3.2, -25);' },
+  { name: 'gun', p: [16.3, 0, -6.5, 0, -0.03], setup: 'NS.flashlightOn = true; NS.inv.add("shotgun"); NS.world.data.vars.gunLoaded = 2; NS.monster.wake(true); NS.monster.pos.set(16.3,0,-13); NS.monster.yaw = 0; NS.monster.cool = 999;' },
+  { name: 'hallgate', p: [2, 0, -50, -1.4, 0.05], setup: 'NS.world.set("power", true); NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
   { name: 'sewer', p: [23, -8, -20.5, -1.9, -0.05], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
-  { name: 'canal', p: [33, -8, -17.2, -1.57, -0.02], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
-  { name: 'pump', p: [94.5, -8, -15, -1.57, 0.05], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
-  { name: 'archive', p: [-17, 0, -8, 1.3, 0], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
+  { name: 'archive', p: [-33, 0, -8, 1.3, 0], setup: 'NS.flashlightOn = true; NS.monster.pos.set(60,0,60);' },
 ];
 
 const edge = await launchEdge({ width: 1600, height: 900 });
@@ -35,6 +36,7 @@ await page.eval(`(async () => {
   document.getElementById('cine').classList.add('hidden');
   NS.level.pickups.flashlight.interact();
   document.getElementById('hud').style.display = 'none';
+  NS.mem.data.playTime = 60;
   document.getElementById('lockhint').style.display = 'none';
   window.tp = (x,y,z,yaw,pitch) => { NS.player.setPose({x,y,z,yaw,pitch}); NS.player.applyCamera(0.016); NS.updateZone(false); NS.level.cull(NS.player.pos); NS.lightPool.assign(NS.player.pos); for (let i=0;i<60;i++) NS.update(1/60); };
   return true;

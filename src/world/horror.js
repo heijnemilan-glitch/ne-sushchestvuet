@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { Button } from './objects.js';
 import { mulberry32 } from '../core/rng.js';
-import { SEW, BAL } from './level.js';
+import { SEW, BAL, POOL, SUNK, HALL_DZ } from './consts.js';
 
 const rnd = mulberry32(777);
 
@@ -446,103 +446,120 @@ export class Horror {
   build() {
     const T = this.tex;
     const L = this.level;
+    const HZ = HALL_DZ;
     // ── шкафчики-укрытия
-    this.locker(-1.62, -4.2, 1, 0, 'corridor');
-    this.locker(1.62, -14.5, -1, 0, 'corridor');
-    this.locker(-12, -6.38, 0, -1, 'west', { corpse: true });
-    this.locker(-7.2, -9.62, 0, 1, 'west');
-    this.locker(5, -9.62, 0, 1, 'east');
-    this.locker(-16.38, -4, -1, 0, 'archive');
-    this.locker(29.62, -16.5, -1, 0, 'generator');
-    this.locker(-11.62, -26, 1, 0, 'hall');
-    this.locker(11.62, -40, -1, 0, 'hall');
-    this.locker(-12.38, -43, -1, 0, 'observation', { y: BAL });
+    this.locker(5.6, -0.42, 0, -1, 'corridor');
+    this.locker(17.62, -13.5, -1, 0, 'corridor');
+    this.locker(4.4, -19.4, -1, 0, 'corridor');
+    this.locker(8, -33.62, 0, 1, 'corridor');
+    this.locker(-19.6, -9.62, 0, 1, 'west', { corpse: true });
+    this.locker(-31.62, -9.4, 1, 0, 'west');
+    this.locker(-21.38, -12.2, -1, 0, 'dorm');
+    this.locker(-30.62, -13.6, 1, 0, 'dorm');
+    this.locker(-32.38, -4, -1, 0, 'archive');
+    this.locker(31.62, -9.4, -1, 0, 'east');
+    this.locker(45.62, -16.5, -1, 0, 'generator');
+    this.locker(-29.62, -24, 1, 0, 'workshop');
+    this.locker(-11.62, -46.5, 1, 0, 'hall');
+    this.locker(11.62, -38.6, -1, 0, 'hall');
+    this.locker(-12.38, -43 + HZ, -1, 0, 'observation', { y: BAL });
     this.locker(103.62, -10, -1, 0, 'pump', { y: SEW });
     this.locker(105.62, -5, -1, 0, 'lab');
 
     // ── надписи-подсказки
-    this.write(['ЗДЕСЬ ОНО', 'ТЕБЯ НЕ ТРОНЕТ'], 1.88, 1.7, -1.6, -Math.PI / 2, 'corridor', { width: 1.6 });
-    this.write(['ОНО СЛЫШИТ', 'КАК ТЫ БЕЖИШЬ'], -1.88, 1.6, -13.8, Math.PI / 2, 'corridor', { width: 2 });
-    this.write(['0-7  0-7  0-7'], -1.88, 2.95, -16, Math.PI / 2, 'corridor', { width: 1.5 });
-    this.write(['ФОНАРЬ ВИДНО', 'ИЗДАЛЕКА'], -11, 1.7, -9.88, 0, 'west', { width: 2.2 });
-    this.write(['НЕ ОБОРАЧИВАЙСЯ'], 11, 1.8, -6.12, Math.PI, 'east', { width: 2.6 });
-    this.write(['ПРЯЧЬСЯ В ШКАФ', 'НО НЕ У НЕГО НА ГЛАЗАХ'], 6, 2.3, -24.12, Math.PI, 'hall', { width: 3 });
-    this.write(['ПРИСЯДЬ — И ОНО', 'ТЕБЯ НЕ УСЛЫШИТ'], -11.88, 2.0, -35, Math.PI / 2, 'hall', { width: 2.6 });
-    this.write(['МЫ ВСЕ', 'ЗДЕСЬ БЫЛИ'], -24.5, 3.5, -2.12, Math.PI, 'archive', { width: 2 });
-    this.write(['ВЕРНИ СВЕТ', 'И ОНО УСНЁТ?'], 16.12, 2.6, -13, Math.PI / 2, 'generator', { width: 1.9 });
-    this.write(['ОН СМОТРИТ ТУДА', 'ГДЕ СПРЯТАНО'], -17, BAL + 2.5, -43.88, 0, 'observation', { width: 2.2, size: 80 });
+    this.write(['ЗДЕСЬ ОНО', 'ТЕБЯ НЕ ТРОНЕТ'], 1.9, 2.45, -0.12, Math.PI, 'corridor', { width: 1.4 });
+    this.write(['ОНО СЛЫШИТ', 'КАК ТЫ БЕЖИШЬ'], 17.88, 1.8, -24, -Math.PI / 2, 'corridor', { width: 2 });
+    this.write(['0-7  0-7  0-7'], -9, 3.05, -0.12, Math.PI, 'corridor', { width: 1.5 });
+    this.write(['ОНО НЕ ЗАХОДИТ', 'В ВОДУ'], -17.88, 1.9, -17, Math.PI / 2, 'corridor', { width: 2.2 });
+    this.write(['ФОНАРЬ ВИДНО', 'ИЗДАЛЕКА'], -29, 1.7, -9.88, 0, 'west', { width: 2 });
+    this.write(['НЕ ОБОРАЧИВАЙСЯ'], 27, 1.8, -6.12, Math.PI, 'east', { width: 2.6 });
+    this.write(['ПРЯЧЬСЯ В ШКАФ', 'НО НЕ У НЕГО НА ГЛАЗАХ'], 6, 2.3, -37.12, Math.PI, 'hall', { width: 3 });
+    this.write(['ПРИСЯДЬ — И ОНО', 'ТЕБЯ НЕ УСЛЫШИТ'], -11.88, 2.0, -50, Math.PI / 2, 'hall', { width: 2.6 });
+    this.write(['ВОРОТА ОТКРОЮТСЯ', 'КОГДА ОНО УМРЁТ'], 11.88, 2.4, -58.2, -Math.PI / 2, 'hall', { width: 2.4 });
+    this.write(['МЫ ВСЕ', 'ЗДЕСЬ БЫЛИ'], -40.5, 3.5, -2.12, Math.PI, 'archive', { width: 2 });
+    this.write(['ВЕРНИ СВЕТ', 'И ОНО УСНЁТ?'], 32.12, 2.9, -4.8, Math.PI / 2, 'generator', { width: 1.9 });
+    this.write(['ОН СМОТРИТ ТУДА', 'ГДЕ СПРЯТАНО'], -17, BAL + 2.5, -43.88 + HZ, 0, 'observation', { width: 2.2, size: 80 });
+    this.write(['ЕМУ НУЖНО', 'ТРИ ПОПАДАНИЯ'], -25, 2.6, -31.88, 0, 'workshop', { width: 2.2 });
+    this.write(['НЕ ПОДПУСКАЙ', 'БЛИЖЕ ДЕСЯТИ ШАГОВ'], -29.88, 2.0, -26.5, Math.PI / 2, 'workshop', { width: 2.4 });
+    this.write(['МЫ СПАЛИ', 'ПО ОЧЕРЕДИ'], -26, 2.2, -17.88, 0, 'dorm', { width: 2 });
     this.write(['ВНИЗУ ДЫШАТ'], 22.12, SEW + 2.8, -11, Math.PI / 2, 'sewer', { width: 2.2 });
     this.write(['НЕ СМОТРИ', 'В ВОДУ'], 40, SEW + 2.4, -17.88, 0, 'canal', { width: 1.8 });
     this.write(['ВЫХОД ЕСТЬ', 'НО ОН ТОЖЕ ПОМНИТ'], 97, SEW + 3.4, -23.88, 0, 'pump', { width: 2.6 });
 
     // ── кровь
-    this.decal(T.hand, -1.86, 1.15, -15.7, { ry: Math.PI / 2, w: 0.32, h: 0.32, zone: 'corridor', wet: true });
-    this.decal(T.hand, -1.86, 0.92, -16.35, { ry: Math.PI / 2, w: 0.28, h: 0.28, zone: 'corridor', rz: 0.6 });
-    for (let i = 0; i < 5; i++) this.decal(T.footprints, (i % 2 ? 0.35 : -0.35), 0.006, -1.2 - i * 1.6, { floor: true, w: 0.55, h: 1.1, zone: 'corridor', rz: Math.PI, opacity: 1 - i * 0.15 });
-    for (let i = 0; i < 6; i++) this.decal(T.drag, -3 - i * 2.1, 0.006, -8 + (rnd() - 0.5) * 0.3, { floor: true, w: 0.8, h: 2.2, zone: 'west', rz: Math.PI / 2 + (rnd() - 0.5) * 0.2, opacity: 0.9, wet: i < 2 });
-    this.decal(T.drag, -0.6, 0.006, -7.6, { floor: true, w: 0.8, h: 2.2, zone: 'corridor', rz: 0.9, wet: true });
-    this.decal(T.pool, 11.4, 0.006, -7.2, { floor: true, w: 2.2, h: 2.2, zone: 'east', wet: true });
-    this.decal(T.drips, 13, 1.7, -9.88, { w: 1.2, h: 1.6, zone: 'east' });
-    this.decal(T.splat, 20, 2.3, -19.86, { w: 1.4, h: 1.4, zone: 'generator', opacity: 0.85 });
-    this.decal(T.dried, 22, 0.006, -10, { floor: true, w: 1.6, h: 1.6, zone: 'generator' });
-    this.decal(T.splat, -20.6, 0.006, -7.6, { floor: true, w: 1.4, h: 1.4, zone: 'archive', opacity: 0.8 });
-    this.decal(T.hand, -11.88, 1.3, -29.5, { ry: Math.PI / 2, w: 0.3, h: 0.3, zone: 'hall', rz: -0.4, wet: true });
-    for (let i = 0; i < 7; i++) this.decal(T.drag, -3 + i * 0.45, 0.006, -29.5 - i * 2.4, { floor: true, w: 0.9, h: 2.5, zone: 'hall', rz: 0.18, opacity: 0.85, wet: i > 4 });
-    this.decal(T.pool, 0.4, 0.006, -46.6, { floor: true, w: 2.4, h: 1.8, zone: 'hall', wet: true });
-    this.decal(T.drips, 0, 3.2, -47.88, { w: 1.6, h: 2.2, zone: 'hall' });
-    this.decal(T.hand, -21.96, BAL + 1.7, -38.5, { ry: Math.PI / 2, w: 0.3, h: 0.3, zone: 'observation', wet: true });
+    this.decal(T.hand, -9.75, 1.15, -0.12, { ry: Math.PI, w: 0.32, h: 0.32, zone: 'corridor', wet: true });
+    this.decal(T.hand, -8.2, 0.92, -0.12, { ry: Math.PI, w: 0.28, h: 0.28, zone: 'corridor', rz: 0.6 });
+    for (let i = 0; i < 5; i++) this.decal(T.footprints, (i % 2 ? 0.35 : -0.35), 0.006, -0.9 - i * 1.25, { floor: true, w: 0.55, h: 1.1, zone: 'corridor', rz: Math.PI, opacity: 1 - i * 0.15 });
+    for (let i = 0; i < 5; i++) this.decal(T.drag, -16.3 + (rnd() - 0.5) * 0.3, 0.006, -10 - i * 2.1, { floor: true, w: 0.8, h: 2.2, zone: 'corridor', rz: (rnd() - 0.5) * 0.2, opacity: 0.9, wet: i > 2 });
+    this.decal(T.pool, 2.6, 0.006, -18.4, { floor: true, w: 2, h: 2, zone: 'corridor', wet: true });
+    for (let i = 0; i < 5; i++) this.decal(T.drag, 20 + i * 2.1, 0.006, -8 + (rnd() - 0.5) * 0.3, { floor: true, w: 0.8, h: 2.2, zone: 'east', rz: Math.PI / 2 + (rnd() - 0.5) * 0.2, opacity: 0.9, wet: i < 2 });
+    this.decal(T.pool, 29, 0.006, -7.2, { floor: true, w: 2.2, h: 2.2, zone: 'east', wet: true });
+    this.decal(T.drips, 29, 1.7, -9.88, { w: 1.2, h: 1.6, zone: 'east' });
+    this.decal(T.splat, 36, 2.3, -19.86, { w: 1.4, h: 1.4, zone: 'generator', opacity: 0.85 });
+    this.decal(T.dried, 38, 0.006, -10, { floor: true, w: 1.6, h: 1.6, zone: 'generator' });
+    this.decal(T.splat, -36.6, 0.006, -7.6, { floor: true, w: 1.4, h: 1.4, zone: 'archive', opacity: 0.8 });
+    this.decal(T.hand, -11.88, 1.3, -42.2, { ry: Math.PI / 2, w: 0.3, h: 0.3, zone: 'hall', rz: -0.4, wet: true });
+    for (let i = 0; i < 7; i++) this.decal(T.drag, -3 + i * 0.45, 0.006, -42.5 - i * 2.4, { floor: true, w: 0.9, h: 2.5, zone: 'hall', rz: 0.18, opacity: 0.85, wet: i > 4 });
+    this.decal(T.pool, 0.4, 0.006, -59.6, { floor: true, w: 2.4, h: 1.8, zone: 'hall', wet: true });
+    this.decal(T.drips, 0, 3.2, -60.88, { w: 1.6, h: 2.2, zone: 'hall' });
+    this.decal(T.hand, -21.96, BAL + 1.7, -38.5 + HZ, { ry: Math.PI / 2, w: 0.3, h: 0.3, zone: 'observation', wet: true });
+    this.decal(T.dried, -25, 0.006, -22, { floor: true, w: 1.4, h: 1.4, zone: 'workshop', opacity: 0.8 });
+    this.decal(T.pool, -27.4, 0.006, -15.2, { floor: true, w: 1.6, h: 1.6, zone: 'dorm', wet: true });
     this.decal(T.pool, 29.2, SEW + 0.006, -20.4, { floor: true, w: 1.8, h: 1.8, zone: 'sewer', wet: true });
     this.decal(T.drips, 31.88, SEW + 2.5, -14.5, { ry: -Math.PI / 2, w: 1, h: 1.6, zone: 'sewer' });
-    this.decal(T.pool, -71, 0.006, -12.6, { floor: true, w: 2.4, h: 2.4, zone: 'room07', wet: true });
+    this.decal(T.pool, -74, 0.006, 22.6, { floor: true, w: 2.4, h: 2.4, zone: 'room07', wet: true });
     this.decal(T.splat, 97, SEW + 0.006, -16, { floor: true, w: 1.8, h: 1.8, zone: 'pump', wet: true });
-    // старое пятно на матрасе палаты — двигается вместе с койкой
+    // старое пятно на матрасе изолятора — двигается вместе с койкой
     const stain = this.decal(T.dried, 0, 0, 0, { floor: true, w: 0.7, h: 0.9, zone: 'start', opacity: 0.85 });
     stain.position.set(0.05, 0.605, 0.25);
     L.bedGroup.add(stain);
 
     // ── грязь и лужи
-    [[0, -9, 'corridor'], [0, -18, 'corridor'], [-6, -8, 'west'], [12, -8, 'east'], [2, -30, 'hall'], [-6, -40, 'hall'], [-21, -10, 'archive'], [20, -6, 'generator']].forEach(([x, z, zone]) =>
+    [[0, -1.8, 'corridor'], [16.2, -14, 'corridor'], [0, -16, 'corridor'], [-25, -8, 'west'], [25, -8, 'east'], [2, -43, 'hall'], [-6, -53, 'hall'], [-37, -10, 'archive'], [36, -6, 'generator'], [-24, -26, 'workshop'], [-26, -14, 'dorm']].forEach(([x, z, zone]) =>
       this.decal(T.grime, x, 0.004, z, { floor: true, w: 3.2, h: 3.2, zone, rz: rnd() * 6 })
     );
-    this.decal(T.puddle, -0.8, 0.005, -19.2, { floor: true, w: 1.6, h: 1.2, zone: 'corridor', wet: true });
-    this.decal(T.puddle, 21, 0.005, -8.5, { floor: true, w: 2.2, h: 1.6, zone: 'generator', wet: true });
-    this.decal(T.puddle, -4, 0.005, -33, { floor: true, w: 2, h: 1.6, zone: 'hall', wet: true });
+    this.decal(T.puddle, -12, 0.005, -1.6, { floor: true, w: 1.6, h: 1.2, zone: 'corridor', wet: true });
+    this.decal(T.puddle, 37, 0.005, -8.5, { floor: true, w: 2.2, h: 1.6, zone: 'generator', wet: true });
+    this.decal(T.puddle, -4, 0.005, -46, { floor: true, w: 2, h: 1.6, zone: 'hall', wet: true });
 
     // ── мусор и разруха
-    this.papers(0, -6, 1.4, 18, 'corridor');
-    this.papers(-8, -8, 1.4, 16, 'west');
-    this.papers(-20, -8, 2, 30, 'archive');
-    this.papers(-16, -38, 1.6, 18, 'observation', BAL);
-    this.papers(1, -32, 2.5, 24, 'hall');
-    this.toppledChair(-13.4, -7.4, 'west');
-    this.toppledChair(-20.4, -10.8, 'archive');
-    this.toppledChair(-15, -40, 'observation');
-    this.toppledChair(4, -34, 'hall');
-    this.gurney(11.5, -7.2, Math.PI / 2, 'east');
-    this.gurney(-1.2, -20.5, 0.15, 'corridor', false);
-    this.wheelchair(1.3, -9.4, 2.4, 'corridor');
-    this.ceilingHole(0, -10.8, 3.6, 'corridor');
-    this.ceilingHole(6.5, -8.2, 3.6, 'east');
-    this.ceilingHole(-19.5, -9, 4.5, 'archive');
-    this.cable(-0.6, -10.5, 0.4, -11.4, 3.58, 1.0, 'corridor');
-    this.cable(6.2, -8, 7, -8.5, 3.58, 1.2, 'east');
-    this.cable(-19.2, -8.6, -19.8, -9.4, 4.48, 1.4, 'archive');
-    this.cable(-3, -28, 3, -33, 9.9, 3.5, 'hall');
-    this.cable(4, -41, -2, -45, 9.9, 4.2, 'hall');
-    this.sparker(0, 3.55, -14, 'corridor');
-    this.sparker(12.5, 3.55, -8, 'east');
+    this.papers(0, -1.8, 1.2, 14, 'corridor');
+    this.papers(-25, -8, 1.4, 16, 'west');
+    this.papers(-36, -8, 2, 30, 'archive');
+    this.papers(-16, -38 + HZ, 1.6, 18, 'observation', BAL);
+    this.papers(1, -45, 2.5, 24, 'hall');
+    this.papers(-26, -14, 1.5, 14, 'dorm');
+    this.papers(-24, -25, 1.6, 12, 'workshop');
+    this.toppledChair(-29.4, -7.4, 'west');
+    this.toppledChair(-36.4, -10.8, 'archive');
+    this.toppledChair(-15, -40 + HZ, 'observation');
+    this.toppledChair(4, -47, 'hall');
+    this.gurney(28.5, -7.2, Math.PI / 2, 'east');
+    this.wheelchair(11.5, -1.6, 2.4, 'corridor');
+    this.ceilingHole(23.5, -8.2, 3.6, 'east');
+    this.ceilingHole(-35.5, -9, 4.5, 'archive');
+    this.ceilingHole(-28, -7.6, 3.2, 'west');
+    this.cable(23.2, -8, 24, -8.5, 3.58, 1.2, 'east');
+    this.cable(-35.2, -8.6, -35.8, -9.4, 4.48, 1.4, 'archive');
+    this.cable(-3, -41, 3, -46, 9.9, 3.5, 'hall');
+    this.cable(4, -54, -2, -58, 9.9, 4.2, 'hall');
+    this.sparker(28.5, 3.55, -8, 'east');
     this.sparker(97, SEW + 5.9, -15, 'pump');
 
-    // ── капель: кровь из дыры в потолке, вода в канализации и протечках
-    this.drip(0.15, 3.58, -10.7, 0, 'corridor', true);
-    this.decal(T.pool, 0.15, 0.007, -10.7, { floor: true, w: 0.8, h: 0.8, zone: 'corridor', wet: true });
-    this.drip(-0.8, 3.58, -19.2, 0, 'corridor');
+    // ── капель: кровь из дыры в потолке, вода с потолка резервуара
+    this.drip(22.9, 3.58, -7.7, 0, 'east', true);
+    this.decal(T.pool, 22.9, 0.007, -7.7, { floor: true, w: 0.8, h: 0.8, zone: 'east', wet: true });
+    this.drip(-12, 13.8, -1.8, 0, 'corridor');
+    this.drip(16.2, 13.8, -20, 0, 'corridor');
+    this.drip(-6, 13.8, -10, POOL, 'corridor');
+    this.drip(7, 13.8, -26, POOL, 'corridor');
+    this.drip(-16, 13.8, -30, SUNK + 0.2, 'corridor');
     this.drip(25, SEW + 5, -11, SEW, 'sewer');
     this.drip(28, SEW + 5, -19, SEW, 'sewer');
     this.drip(38, SEW + 4.5, -17.2, SEW, 'canal');
     this.drip(52, SEW + 4.5, -12.8, SEW, 'canal');
     this.drip(99, SEW + 6, -20, SEW, 'pump');
-    this.drip(21, 7, -8.5, 0, 'generator');
+    this.drip(37, 7, -8.5, 0, 'generator');
 
     // ── повешенное тело (появится в скримере над дырой в потолке)
     const hang = new THREE.Group();
@@ -551,7 +568,7 @@ export class Horror {
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.1, 6, 10), new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.5 }));
     body.position.y = -2.0;
     hang.add(rope, body);
-    hang.position.set(6.5, 3.6, -8.2);
+    hang.position.set(23.5, 3.6, -8.2);
     hang.visible = false;
     this.b.groupOf('east').add(hang);
     this.hangingBody = hang;

@@ -29,6 +29,8 @@ const ZONE_AMBIENCE = {
   pump: { vent: 0.4, hum: 0.3, whine: 0.0, drone: 0.2, cutoff: 400 },
   outflow: { vent: 1.0, hum: 0.0, whine: 0.0, drone: 0.1, cutoff: 1800 },
   outside: { vent: 1.2, hum: 0.0, whine: 0.0, drone: 0.05, cutoff: 3500 },
+  reservoir: { vent: 0.45, hum: 0.12, whine: 0.0, drone: 0.3, cutoff: 420 },
+  flood: { vent: 0.4, hum: 0.25, whine: 0.06, drone: 0.35, cutoff: 500 },
 };
 
 export class AudioManager {
@@ -319,6 +321,25 @@ export class AudioManager {
       srcs.push(n, lfo);
       osc(38, 'sine', 0.09);
       osc(57.5, 'sawtooth', 0.012);
+    } else if (type === 'electric') {
+      // гул и треск кабеля под напряжением
+      osc(50, 'sawtooth', 0.05);
+      osc(100, 'square', 0.015);
+      const n = this.noiseSource(this.white);
+      const f = c.createBiquadFilter();
+      f.type = 'highpass';
+      f.frequency.value = 3500;
+      const g = c.createGain();
+      g.gain.value = 0.05;
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 7;
+      const lg = c.createGain();
+      lg.gain.value = 0.05;
+      lfo.connect(lg).connect(g.gain);
+      n.connect(f).connect(g).connect(gain);
+      n.start();
+      lfo.start();
+      srcs.push(n, lfo);
     } else if (type === 'core') {
       osc(36, 'sine', 0.12);
       osc(72.3, 'triangle', 0.03);
@@ -795,5 +816,97 @@ export class AudioManager {
   sfx_fork_hum() {
     this.tone({ freq: 440, dur: 1.5, gain: 0.02, attack: 0.2 });
     this.tone({ freq: 443, dur: 1.5, gain: 0.02, attack: 0.2 });
+  }
+  // ── оружие, ток, ворота ────────────────────────────────────────────────────
+  sfx_shotgun() {
+    // выстрел: резкий шумовой удар, низкий «бум», хвост эха в бетоне
+    this.noise({ dur: 0.09, type: 'highpass', freq: 1200, gain: 0.9, attack: 0.001 });
+    this.noise({ dur: 0.35, freq: 900, freqEnd: 120, gain: 0.9, attack: 0.001, brown: true });
+    this.tone({ freq: 90, freqEnd: 32, dur: 0.45, type: 'sine', gain: 0.8, attack: 0.002 });
+    this.noise({ dur: 1.8, type: 'bandpass', freq: 500, q: 0.7, gain: 0.12, delay: 0.08, attack: 0.05 });
+    this.noise({ dur: 2.6, type: 'lowpass', freq: 260, gain: 0.1, delay: 0.3, attack: 0.2, brown: true });
+  }
+  sfx_dryfire() {
+    this.noise({ dur: 0.025, type: 'bandpass', freq: 3200, q: 4, gain: 0.25 });
+    this.noise({ dur: 0.02, type: 'bandpass', freq: 1800, q: 4, gain: 0.12, delay: 0.05 });
+  }
+  sfx_break_open() {
+    this.noise({ dur: 0.06, type: 'bandpass', freq: 2400, q: 3, gain: 0.25 });
+    this.tone({ freq: 620, dur: 0.08, type: 'triangle', gain: 0.05, delay: 0.02 });
+    this.noise({ dur: 0.04, type: 'highpass', freq: 3000, gain: 0.1, delay: 0.18 });
+  }
+  sfx_shell_in() {
+    this.noise({ dur: 0.05, type: 'bandpass', freq: 1500, q: 2.5, gain: 0.18 });
+    this.tone({ freq: 900, dur: 0.05, type: 'triangle', gain: 0.03 });
+  }
+  sfx_rack() {
+    this.noise({ dur: 0.05, type: 'bandpass', freq: 2000, q: 3, gain: 0.35 });
+    this.noise({ dur: 0.08, type: 'bandpass', freq: 900, q: 2, gain: 0.25, delay: 0.06 });
+    this.tone({ freq: 180, dur: 0.1, type: 'square', gain: 0.04, delay: 0.06 });
+  }
+  sfx_clank(pos) {
+    this.tone({ freq: 1250 + Math.random() * 300, dur: 0.5, type: 'triangle', gain: 0.06, pos });
+    this.tone({ freq: 2630, dur: 0.3, gain: 0.02, pos });
+    this.noise({ dur: 0.06, type: 'bandpass', freq: 2600, q: 2, gain: 0.25, pos });
+  }
+  sfx_zap(pos) {
+    // треск электрической дуги
+    for (let i = 0; i < 5; i++) this.noise({ dur: 0.03 + Math.random() * 0.04, type: 'highpass', freq: 2500 + Math.random() * 3000, gain: 0.25, pos, delay: i * (0.02 + Math.random() * 0.04) });
+    this.tone({ freq: 120, dur: 0.25, type: 'sawtooth', gain: 0.08, pos });
+  }
+  sfx_electrocute() {
+    this.tone({ freq: 100, dur: 1.8, type: 'sawtooth', gain: 0.25, attack: 0.01 });
+    this.tone({ freq: 150, dur: 1.8, type: 'square', gain: 0.1, attack: 0.01 });
+    for (let i = 0; i < 14; i++) this.noise({ dur: 0.05, type: 'highpass', freq: 3000 + Math.random() * 4000, gain: 0.35, delay: i * 0.11 });
+    this.noise({ dur: 0.4, freq: 400, gain: 0.4, brown: true, delay: 1.6 });
+  }
+  sfx_monster_hurt(pos) {
+    [320, 410, 537].forEach((f, i) => this.tone({ freq: f, freqEnd: f * 0.55, dur: 1.1, type: 'sawtooth', gain: 0.07, pos, delay: i * 0.02 }));
+    this.noise({ dur: 0.9, type: 'bandpass', freq: 1400, freqEnd: 500, q: 2, gain: 0.35, pos });
+    this.sfx_roar(pos);
+  }
+  sfx_monster_death(pos) {
+    [220, 293, 349, 466].forEach((f, i) => this.tone({ freq: f, freqEnd: f * 0.3, dur: 3.2, type: 'sawtooth', gain: 0.06, pos, delay: i * 0.05, attack: 0.05 }));
+    this.noise({ dur: 2.8, type: 'bandpass', freq: 1800, freqEnd: 200, q: 1.5, gain: 0.35, pos, attack: 0.05 });
+    this.tone({ freq: 60, freqEnd: 25, dur: 3, gain: 0.35, pos });
+    this.noise({ dur: 1.5, freq: 300, gain: 0.25, pos, brown: true, delay: 2.4, attack: 0.3 });
+  }
+  sfx_alarm(pos) {
+    for (let i = 0; i < 6; i++) this.tone({ freq: i % 2 ? 620 : 880, dur: 0.32, type: 'square', gain: 0.07, pos, delay: i * 0.35 });
+  }
+  sfx_siren(pos) {
+    const c = this.ctx;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(300, t);
+    for (let i = 0; i < 5; i++) {
+      o.frequency.linearRampToValueAtTime(820, t + i * 1.6 + 0.8);
+      o.frequency.linearRampToValueAtTime(300, t + i * 1.6 + 1.6);
+    }
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 1800;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.3);
+    g.gain.setValueAtTime(0.09, t + 7.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 8);
+    o.connect(f).connect(g).connect(this.out(pos));
+    o.start(t);
+    o.stop(t + 8.1);
+  }
+  sfx_rumble(pos) {
+    this.noise({ dur: 7, freq: 140, gain: 0.45, pos, brown: true, attack: 0.6 });
+    this.tone({ freq: 38, dur: 7, gain: 0.2, pos, attack: 0.8 });
+    for (let i = 0; i < 6; i++) this.noise({ dur: 0.08, type: 'bandpass', freq: 1600, q: 3, gain: 0.12, pos, delay: 0.8 + i * 1.1 });
+  }
+  sfx_gurgle(pos) {
+    for (let i = 0; i < 6; i++) this.tone({ freq: 180 + Math.random() * 260, freqEnd: 90, dur: 0.12, type: 'sine', gain: 0.05, pos, delay: i * (0.05 + Math.random() * 0.08) });
+    this.noise({ dur: 0.6, type: 'lowpass', freq: 500, gain: 0.08, pos, brown: true });
+  }
+  sfx_map_open() {
+    this.noise({ dur: 0.35, type: 'highpass', freq: 1800, gain: 0.1, attack: 0.05 });
+    this.noise({ dur: 0.25, type: 'bandpass', freq: 3000, q: 1, gain: 0.07, delay: 0.3, attack: 0.03 });
   }
 }

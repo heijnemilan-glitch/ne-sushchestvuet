@@ -55,6 +55,8 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 /* противогаз: два стекла, всё остальное — резина и темнота */
 #mask-ov { background: radial-gradient(ellipse 22% 30% at 34% 46%, transparent 70%, rgba(0,0,0,0.6) 85%, #050605 92%), radial-gradient(ellipse 22% 30% at 66% 46%, transparent 70%, rgba(0,0,0,0.6) 85%, #050605 92%); mix-blend-mode: multiply; }
 #mask-ov::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 46%, transparent 55%, rgba(4,5,4,0.96) 80%); }
+#drown-ov { opacity: 0; background: radial-gradient(ellipse at center, rgba(20,60,50,0.55) 0%, rgba(4,20,16,0.95) 75%, #010806 100%); pointer-events: none; }
+#shock-ov { opacity: 0; background: radial-gradient(ellipse at center, rgba(235,245,255,0.95) 0%, rgba(150,200,255,0.85) 60%, rgba(40,70,140,0.9) 100%); pointer-events: none; }
 #toxic-ov { opacity: 0; background: radial-gradient(ellipse at center, rgba(90,120,20,0.25) 0%, rgba(40,60,8,0.75) 100%); mix-blend-mode: multiply; transition: opacity 0.4s; }
 /* VHS-кассета */
 #tape { z-index: 57; }
@@ -197,3 +199,44 @@ input.code { background: #0c0e0e; color: var(--text); border: 1px solid var(--li
 #examine-ui .d { font-size: 15px; line-height: 1.55; color: #cfd4cc; }
 #examine-ui .h { font-size: 12px; color: var(--dim); margin-top: 14px; }
 #active-item { position: fixed; right: 20px; top: 18px; font-size: 13px; color: var(--dim); }
+
+/* бумажная карта комплекса */
+.mapsheet { position: relative; width: min(1180px, 96vw); max-height: 94vh; overflow: auto; padding: 22px 26px 20px; color: #2a241c;
+  background: radial-gradient(ellipse at 30% 20%, #e6dcc2 0%, #d8cba8 55%, #c2b28a 100%); border-radius: 3px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.7), inset 0 0 60px rgba(90,60,20,0.35);
+  font-family: "Segoe Print", "Comic Sans MS", cursive; transform-origin: 50% 60%; animation: mapUnfold 0.75s cubic-bezier(.2,.9,.25,1); }
+.mapsheet::before, .mapsheet::after { content: ''; position: absolute; pointer-events: none; }
+.mapsheet::before { left: 50%; top: 0; bottom: 0; width: 2px; background: linear-gradient(90deg, rgba(80,60,30,0.25), rgba(255,250,230,0.35)); }
+.mapsheet::after { top: 50%; left: 0; right: 0; height: 2px; background: linear-gradient(180deg, rgba(80,60,30,0.25), rgba(255,250,230,0.35)); }
+@keyframes mapUnfold {
+  0% { transform: perspective(1100px) rotateX(78deg) scale(0.25, 0.2); opacity: 0; }
+  45% { transform: perspective(1100px) rotateX(30deg) scale(0.8, 0.55); opacity: 1; }
+  75% { transform: perspective(1100px) rotateX(-4deg) scale(1.01, 1.0); }
+  100% { transform: none; }
+}
+.mapsheet .close { position: absolute; right: 16px; top: 10px; cursor: pointer; font-size: 13px; color: #5a4a36; font-family: Consolas, monospace; }
+.mapgrid { display: grid; grid-template-columns: 1.75fr 1fr; gap: 18px; align-items: start; }
+.mapleft canvas { width: 100%; height: auto; display: block; }
+.maptitle { font-weight: bold; letter-spacing: 2px; font-size: 15px; margin-bottom: 6px; color: #3a2e20; }
+.mapright h3 { margin: 4px 0 10px; font-size: 18px; color: #7a1c10; letter-spacing: 1px; }
+.mapright .exit { margin-bottom: 12px; font-size: 14px; line-height: 1.35; }
+.mapright .exit i { display: block; font-size: 12px; color: #5a4a36; }
+.mapright .exit em { color: #1e6a2e; font-style: normal; font-size: 12px; }
+.mapright ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.mapright li { font-size: 13px; margin: 3px 0; display: flex; gap: 7px; align-items: baseline; }
+.mapright li.done { color: #1e6a2e; text-decoration: line-through; text-decoration-color: rgba(30,106,46,0.5); }
+.mapright .box { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #3a2e20; border-radius: 2px; text-align: center; line-height: 12px; font-size: 12px; flex: none; }
+.mapright .rumor { font-size: 13px; color: #4a3a28; border-top: 1px dashed rgba(60,40,20,0.4); padding-top: 8px; }
+.mapright .danger p { margin: 4px 0; font-size: 13px; color: #8a1e10; }
+.mapright .danger p.struck { text-decoration: line-through; color: #6a6050; }
+#sv-items .gun { color: #ffd080; }
+@media (max-width: 860px) { .mapgrid { grid-template-columns: 1fr; } }
+
+/* старая бумага: пожелтевшая, в пятнах, с рваными и подпалёнными краями */
+.paper { background: var(--paper-note, #d9d4c4) center / cover no-repeat, #cdbb8e; clip-path: var(--torn-note); color: #2b2217;
+  font-family: "Courier New", Courier, monospace; font-size: 16px; line-height: 1.6; transform: rotate(-0.6deg); padding: 40px 46px; text-shadow: 0 0 1px rgba(40,25,10,0.35); }
+.paper h2 { font-family: "Segoe Print", "Comic Sans MS", cursive; color: #3a1f12; border-bottom-color: rgba(60,35,15,0.35); }
+.paper .close { color: #5a4026; }
+.mapsheet { background: var(--paper-map) center / cover no-repeat, #cdbb8e; clip-path: var(--torn-map); }
+.mapsheet::before, .mapsheet::after { opacity: 0.35; }
+#sv-items .shard { color: #6af0dc; }

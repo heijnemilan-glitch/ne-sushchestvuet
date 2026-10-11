@@ -28,6 +28,10 @@ export const DISCOVERIES = [
   { id: 'ending_water', hint: 'Кто-то слишком долго смотрел в воду.' },
   { id: 'boat', hint: 'Проплыл затопленный тоннель.' },
   { id: 'all_tapes', hint: 'Собрал все четыре кассеты.' },
+  { id: 'weapon', hint: 'Собрал ружьё из трёх деталей.' },
+  { id: 'all_shards', hint: 'Собрал все шесть осколков мнемита.' },
+  { id: 'monster_killed', hint: 'Убил Оно. Оно больше не встало.' },
+  { id: 'ending_hunter', hint: 'Кто-то вышел через гермоворота — в снег.' },
 ];
 
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 символа, без похожих 0/O, 1/I

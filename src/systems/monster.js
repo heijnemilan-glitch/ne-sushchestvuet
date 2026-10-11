@@ -12,12 +12,14 @@ import { makeCreature } from '../world/models.js';
 import { rayBox } from './interaction.js';
 
 const CELL = 0.5;
-const BOUNDS = { x0: -34, x1: 32, z0: -50, z1: 8 };
-const SAFE = new Set(['start', 'waiting', 'vestibule', 'elevator', 'stairs', 'room07', 'reflection', 'glass', 'vent', 'observation']);
+const BOUNDS = { x0: -46, x1: 48, z0: -64, z1: 4 };
+const SAFE = new Set(['start', 'waiting', 'vestibule', 'elevator', 'stairs', 'room07', 'reflection', 'glass', 'vent', 'observation', 'gateway', 'surface', 'workshop']);
 const PATROL = [
-  [0, -4], [0, -12], [0, -20], [-7, -8], [-14, -8], [-19, -5], [-22.5, -9], [-20, -13], [7, -8], [14, -8],
-  [18, -5], [21, -11], [19, -17], [0, -27], [-6, -33], [6, -40], [0, -43], [-7, -46], [6, -46], [-4, -30],
+  [-12, -1.8], [0, -1.8], [12, -1.8], [-16.3, -8], [-16.3, -16], [16.3, -8], [16.3, -18], [16.3, -28], [10, -32.2], [0, -32.4],
+  [0, -9], [-3, -14.5], [3, -18.5], [-22, -8], [-29, -8], [-26, -14], [-35.5, -5], [-38.5, -9], [-36, -13], [22, -8],
+  [29, -8], [34.5, -5], [37, -11], [35, -17], [0, -35.5], [0, -41], [-6, -47], [6, -54], [0, -57], [-7, -59.5], [6, -59.5],
 ];
+const MAX_HP = 3;
 
 class Grid {
   constructor(game) {
@@ -49,6 +51,7 @@ class Grid {
         const [x, z] = this.center(i, j);
         const zone = b.zoneAt(x, 1, z);
         if (!zone || zone.y0 > 0.5 || zone.y1 < 1 || SAFE.has(zone.memoryId) || zone.map == null) continue;
+        if (this.game.level.inHazard(x, z, 0, 0.3)) continue; // Оно не заходит в воду
         let val = 1;
         for (const c of b.near(x - r, z - r, x + r, z + r)) {
           if (c.y1 <= 0.2 || c.y0 >= 1.8 || c.tag === 'crate') continue;
@@ -208,6 +211,10 @@ export class Monster {
     game.scene.add(this.mesh);
     this.state = game.world.get('monsterAwake') ? 'patrol' : 'dormant';
     this.pos = new THREE.Vector3(...this.spawnPoint());
+    this.hp = game.world.get('monsterHp', MAX_HP);
+    this.dead = !!game.world.get('monsterDead');
+    this.stagger = 0;
+    this.deathT = 0;
     this.yaw = 0;
     this.path = [];
     this.repath = 0;
@@ -229,11 +236,83 @@ export class Monster {
       if (this.state === 'dormant' || this.state === 'chase' || Math.abs(e.y - this.pos.y) > 2) return;
       if (Math.hypot(e.x - this.pos.x, e.z - this.pos.z) < e.r) this.investigate(e.x, e.z);
     });
-    if (this.state !== 'dormant') this.wake(true);
+    if (this.dead) this.layCorpse();
+    else if (this.state !== 'dormant') this.wake(true);
   }
 
   spawnPoint() {
-    return [22.5, 0, -11];
+    return [0, 0, -50];
+  }
+
+  // ── ранения и смерть ──────────────────────────────────────────────────────
+  hit(point, dist) {
+    const g = this.game;
+    if (this.dead) return;
+    if (this.state === 'dormant') this.wake(true);
+    this.hp -= 1;
+    g.world.data.vars.monsterHp = this.hp;
+    g.mem.count('monster_hits');
+    if (this.hp <= 0) return this.die();
+    this.stagger = 2.2;
+    this.state = 'chase';
+    this.lastSeen = g.player.pos.clone();
+    this.seenAt = this.time;
+    g.audio.play('monster_hurt', this.pos.clone().setY(1.8));
+    g.fx.distort(0.3);
+    g.ui.hint(this.hp === 2 ? 'Попал! Оно шатается — но идёт. Ещё два.' : 'Ещё раз! Последний!', 3);
+    if (g.mem.get('monster_hits') === 1) g.mem.observe('monster_hit', 'Я попал в него. Оно закричало — не от боли, от удивления. Значит, его можно ранить.');
+  }
+
+  die() {
+    const g = this.game;
+    this.dead = true;
+    this.state = 'dead';
+    this.deathT = 0.0001;
+    this.path = [];
+    g.world.set('monsterDead', true);
+    g.world.data.vars.monsterCorpse = { x: this.pos.x, z: this.pos.z, yaw: this.yaw };
+    g.audio.play('monster_death', this.pos.clone().setY(1.8));
+    g.audio.setChase(0);
+    g.audio.setEmitter('monster', false);
+    g.fx.distort(0.9);
+    if (g.post) g.post.hit = 0.25;
+    this.play('idle', 0.2);
+    g.mem.observe('monster_dead', 'Оно упало. Оно больше не встаёт. В тишине слышно, как капает вода. Карантин на гермоворотах должен сняться.');
+    g.ui.hint('Оно мертво. Карантин на гермоворотах центрального поста снят.', 6);
+    g.bus.emit('monster:dead');
+  }
+
+  // мёртвое тело после загрузки сохранения
+  layCorpse() {
+    const c = this.game.world.get('monsterCorpse') || { x: this.pos.x, z: this.pos.z, yaw: 0 };
+    this.state = 'dead';
+    this.pos.set(c.x, 0, c.z);
+    this.yaw = c.yaw;
+    this.mesh.visible = true;
+    this.deathT = 99;
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.set(0, this.yaw, 0);
+    this.c.root.rotation.x = -Math.PI / 2;
+    this.c.root.position.y = 0.25;
+    this.c.mixer.update(0.01);
+  }
+
+  updateDeath(dt) {
+    if (this.deathT >= 3) return;
+    this.deathT += dt;
+    const k = Math.min(1, this.deathT / 1.4);
+    const e = k * k;
+    // колени подгибаются, тело заваливается назад и бьётся об пол
+    this.c.root.rotation.x = -e * Math.PI / 2 + (k >= 1 ? Math.sin(this.deathT * 30) * 0.03 * Math.max(0, 2.2 - this.deathT) : 0);
+    this.c.root.position.y = e * 0.25;
+    this.c.root.rotation.z = Math.sin(this.deathT * 9) * 0.15 * (1 - k);
+    if (k >= 1 && !this.thud) {
+      this.thud = true;
+      this.game.audio.play('body_drop', this.pos.clone());
+    }
+    this.c.mixer.update(dt * (1 - k));
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.y = this.yaw;
   }
 
   play(name, speed = 1) {
@@ -249,6 +328,7 @@ export class Monster {
   // «Комплекс просыпается»: монстр появляется после первых шагов игрока.
   wake(silent = false) {
     const g = this.game;
+    if (this.dead) return;
     if (this.state === 'dormant') this.state = 'patrol';
     g.world.set('monsterAwake', true);
     this.mesh.visible = true;
@@ -263,7 +343,7 @@ export class Monster {
   }
 
   hearDoor(id) {
-    if (this.state === 'dormant' || this.state === 'chase' || this.cool > 0) return;
+    if (this.dead || this.state === 'dormant' || this.state === 'chase' || this.cool > 0) return;
     const d = this.game.level.doors[id];
     if (!d) return;
     const c = d.center();
@@ -271,7 +351,7 @@ export class Monster {
   }
 
   investigate(x, z) {
-    if (this.state === 'chase') return;
+    if (this.state === 'chase' || this.dead) return;
     this.state = 'investigate';
     this.target = new THREE.Vector3(x, 0, z);
     this.repath = 0;
@@ -321,6 +401,25 @@ export class Monster {
   update(dt) {
     const g = this.game;
     this.time += dt;
+    if (this.dead) {
+      this.fear = Math.max(0, this.fear - dt);
+      this.updateDeath(dt);
+      return;
+    }
+    if (this.stagger > 0) {
+      // ранен: шатается, держится за себя, потом бросается снова
+      this.stagger -= dt;
+      this.play('idle', 0.4);
+      this.c.root.rotation.x = -Math.sin(Math.min(1, this.stagger / 2.2) * Math.PI) * 0.35;
+      this.c.root.rotation.z = Math.sin(this.time * 14) * 0.08;
+      if (this.stagger <= 0) {
+        this.c.root.rotation.x = 0;
+        this.c.root.rotation.z = 0;
+        this.cool = 0;
+      }
+      this.after(dt);
+      return;
+    }
     if (this.state === 'dormant') {
       // просыпается, когда игрок выходит за пределы первых комнат и немного осваивается
       const t = g.mem.data.playTime;
@@ -494,6 +593,7 @@ export class Monster {
 
   // после поимки — уходит в дальний угол и какое-то время не охотится
   retreat() {
+    if (this.dead) return;
     const p = this.game.player.pos;
     let best = PATROL[0];
     let bd = -1;

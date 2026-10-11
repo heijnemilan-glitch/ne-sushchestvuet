@@ -8,6 +8,26 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
+
+// Защита от «чёрного экрана»: слишком яркие блики (вода + прожекторы) переполняют half-float,
+// а bloom размазывает такие пиксели на весь кадр. Ограничиваем яркость и вычищаем NaN до bloom.
+const ClampShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (!(c.r == c.r) || !(c.g == c.g) || !(c.b == c.b)) c = vec4(0.0, 0.0, 0.0, 1.0);
+      gl_FragColor = vec4(min(c.rgb, vec3(24.0)), c.a);
+    }`,
+};
 
 const HorrorShader = {
   uniforms: {
@@ -67,11 +87,35 @@ export class PostFX {
     this.composer = new EffectComposer(renderer);
     this.render = new RenderPass(scene, camera);
     this.composer.addPass(this.render);
+    // мягкие тени в углах и щелях (только на высокой и ультра графике)
+    this.ao = new GTAOPass(scene, camera, size.x, size.y);
+    this.ao.blendIntensity = 0.85;
+    this.ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
+    // прозрачные эффекты (туман, лучи, блики) не должны отбрасывать «тень в углах»
+    this.ao._overrideVisibility = function () {
+      const cache = this._visibilityCache;
+      this.scene.traverse((o) => {
+        if (!o.visible) return;
+        const m = o.material;
+        if (o.isPoints || o.isLine || o.isLine2 || (m && m.transparent && m.depthWrite === false)) {
+          o.visible = false;
+          cache.push(o);
+        }
+      });
+    };
+    this.composer.addPass(this.ao);
+    this.composer.addPass(new ShaderPass(ClampShader));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), quality === 'high' ? 0.75 : 0.6, 0.55, 0.72);
     this.composer.addPass(this.bloom);
     this.horror = new ShaderPass(HorrorShader);
     this.composer.addPass(this.horror);
     this.composer.addPass(new OutputPass());
+    // сглаживание краёв
+    this.smaa = new SMAAPass();
+    this.composer.addPass(this.smaa);
+    this.fxaa = new FXAAPass();
+    this.composer.addPass(this.fxaa);
+    this.setQuality(quality);
     this.fear = 0;
     this.hit = 0;
     this.distort = 0;
@@ -80,6 +124,15 @@ export class PostFX {
   setScene(scene, camera) {
     this.render.scene = scene;
     this.render.camera = camera;
+    this.ao.scene = scene;
+    this.ao.camera = camera;
+    if (this.ao.setSceneClipBox) this.ao.setSceneClipBox(null);
+  }
+
+  setQuality(q) {
+    this.ao.enabled = q === 'high' || q === 'ultra';
+    this.smaa.enabled = q === 'high' || q === 'ultra';
+    this.fxaa.enabled = q === 'medium';
   }
 
   setSize(w, h, pixelRatio) {

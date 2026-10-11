@@ -225,9 +225,31 @@ export class SurvivalSystem {
       if (g.mem.count('gas_warn') === 1) g.ui.hint(hasMask ? 'Фильтр забит! Уходи из газа!' : 'Газ! Нечем дышать — назад, или найди противогаз.', 4);
       if (this.toxicity >= TOX_MAX) return this.faint();
     } else this.toxicity = Math.max(0, this.toxicity - dt * 1.5);
+    // вода под током
+    if (this.updateShock(dt)) return;
     // бутылки
     this.updateBottles(dt);
     g.ui.setSurvival(this);
+  }
+
+  // Оборванный кабель в затопленном углу резервуара: шаг в воду — смерть, рядом — предупреждение.
+  updateShock(dt) {
+    const g = this.game;
+    const L = g.level;
+    const pos = g.player.pos;
+    if (!L.cableLive() || this.climbing || g.state !== 'playing') return false;
+    if (L.inHazard(pos.x, pos.z, pos.y)) {
+      g.shock();
+      return true;
+    }
+    this.shockWarn = (this.shockWarn || 0) - dt;
+    if (this.shockWarn <= 0 && L.inHazard(pos.x, pos.z, pos.y, 1.8)) {
+      this.shockWarn = 9;
+      g.audio.play('zap');
+      g.ui.hint('Вода впереди трещит — в ней лежит оборванный кабель. Ступишь — убьёт током. Линию нужно обесточить в подстанции.', 5);
+      g.mem.observe('cable_warn', 'В затопленном углу резервуара в воду упал кабель под напряжением. Вода трещит и светится голубым. Туда нельзя, пока линию не обесточат.');
+    }
+    return false;
   }
 
   // Обморок в газе — очнуться у входа в коллектор.

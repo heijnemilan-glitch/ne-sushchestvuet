@@ -127,7 +127,8 @@ export const DEFAULT_SETTINGS = {
     reload: 'KeyR',
     stim: 'KeyQ',
     throw: 'KeyT',
-    mask: 'KeyM',
+    mask: 'KeyN',
+    map: 'KeyM',
   },
   scares: true,
 };
@@ -141,7 +142,10 @@ export function loadProfile() {
   }
   p = p && typeof p === 'object' ? p : {};
   p.settings = { ...DEFAULT_SETTINGS, ...(p.settings || {}) };
-  p.settings.keys = { ...DEFAULT_SETTINGS.keys, ...((p.settings && p.settings.keys) || {}) };
+  const savedKeys = (p.settings && p.settings.keys) || {};
+  // в старых версиях противогаз был на M — теперь M открывает карту
+  if (savedKeys.mask === 'KeyM' && !savedKeys.map) savedKeys.mask = 'KeyN';
+  p.settings.keys = { ...DEFAULT_SETTINGS.keys, ...savedKeys };
   p.endings = Array.isArray(p.endings) ? p.endings : [];
   p.foreignCodes = Array.isArray(p.foreignCodes) ? p.foreignCodes : [];
   p.runs = p.runs || 0;

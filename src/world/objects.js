@@ -244,7 +244,8 @@ export class Pickup extends Interactable {
 }
 
 // ── РАСХОДНИК (батарейка, стимулятор, бутылка, фильтр) ───────────────────────
-export const SUPPLY_NAMES = { battery: 'Батарейка', stim: 'Стимулятор', bottle: 'Бутылка', filter: 'Фильтр противогаза' };
+export const SUPPLY_NAMES = { battery: 'Батарейка', stim: 'Стимулятор', bottle: 'Бутылка', filter: 'Фильтр противогаза', shells: 'Патроны', shard: 'Осколок мнемита' };
+const SUPPLY_AMOUNT = { shells: 2 };
 
 export class Supply extends Interactable {
   constructor(game, o) {
@@ -271,9 +272,10 @@ export class Supply extends Interactable {
     const g = this.game;
     if (g.world.item(this.id).where !== 'world') return;
     g.world.setItem(this.id, { where: 'inv' });
-    g.inv.addCount(this.kind, 1);
+    const n = SUPPLY_AMOUNT[this.kind] || 1;
+    g.inv.addCount(this.kind, n);
     g.audio.play('pickup');
-    g.ui.toast(`+1 ${SUPPLY_NAMES[this.kind]} (всего: ${g.inv.count(this.kind)})`);
+    g.ui.toast(`+${n} ${SUPPLY_NAMES[this.kind]} (всего: ${g.inv.count(this.kind)})`);
     g.bus.emit('supply:pickup', { kind: this.kind });
     this.sync();
   }

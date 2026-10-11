@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { makeCreature } from '../world/models.js';
-import { SEW, BAL } from '../world/level.js';
+import { SEW, BAL, POOL } from '../world/consts.js';
 
 const AMBIENT = ['bang', 'groan', 'steps_above', 'chain', 'scream_far', 'pipe_knock'];
 
@@ -84,6 +84,12 @@ export class Scares {
         g.player.roll = Math.sin(e.t * 60) * 0.04;
         if (g.post) g.post.hit = Math.max(0, g.post.hit - dt * 1.5);
       }
+      if (e.kind === 'swim' && this.swimMesh) {
+        const k = Math.min(1, e.t / e.dur);
+        this.swimMesh.position.set(-11 + k * 22, POOL - 0.45 + Math.sin(k * Math.PI) * 0.25, e.z + Math.sin(k * 6) * 0.4);
+        this.swimMesh.rotation.y = Math.sin(k * 6) * 0.15;
+        if (k >= 1) this.swimMesh.visible = false;
+      }
       if (e.kind === 'app' && e.lunge && this.app) {
         const cam = g.camera.position;
         const h = this.app.holder.position;
@@ -114,7 +120,7 @@ export class Scares {
     const d = this.done;
 
     // 1. Коридор: свет гаснет, а когда загорается — Оно прямо перед тобой.
-    if (!d.blackout && awake && z === 'corridor' && p.z < -11 && p.z > -19 && g.monster.state !== 'chase') {
+    if (!d.blackout && awake && z === 'corridor' && p.x > 14.5 && p.z < -12 && p.z > -26 && g.monster.state !== 'chase' && !g.monster.dead) {
       this.mark('blackout');
       g.level.blackout = 'corridor';
       g.level.refreshLights();
@@ -149,30 +155,60 @@ export class Scares {
       }
     }
     // 3. Вентиляция: навстречу по шахте бросается лицо.
-    if (!d.vent && z === 'vent2' && p.z < -25 && p.z > -30) {
+    if (!d.vent && z === 'vent2' && p.z < -36 && p.z > -40) {
       this.mark('vent');
-      this.showApparition(-20, 4.0, -33.6, 0, 3, { lunge: true });
+      this.showApparition(-20, 3.9, -46.6, 0, 3, { lunge: true });
       this.app.holder.scale.set(0.7, 0.55, 0.7);
       setTimeout(() => this.app && this.app.holder.scale.set(1, 1, 1), 3200);
       return;
     }
     // 4. Восточное крыло: с потолка падает тело.
-    if (!d.body && awake && z === 'east' && Math.hypot(p.x - 6.5, p.z + 8.2) < 4.5) {
+    if (!d.body && awake && z === 'east' && Math.hypot(p.x - 23.5, p.z + 8.2) < 4.5) {
       this.mark('body');
       g.level.horror.hangingBody.visible = true;
       g.level.horror.hangT = 0;
-      g.audio.play('body_drop', new THREE.Vector3(6.5, 2, -8.2));
+      g.audio.play('body_drop', new THREE.Vector3(23.5, 2, -8.2));
       g.audio.play('stinger');
       g.fx.distort(0.6);
       g.mem.observe('hanged', 'Из дыры в потолке выпало тело на верёвке. Халат. Бейдж: «Громов».');
       return;
     }
     // 5. Атриум: с балкона кто-то смотрит вниз.
-    if (!d.balcony && awake && z === 'hall' && p.y < 1 && p.z < -32) {
+    if (!d.balcony && awake && z === 'hall' && p.y < 1 && p.z < -45) {
       this.mark('balcony');
-      this.showApparition(-3, BAL, -45.9, Math.atan2(p.x + 3, p.z + 45.9), 2.6);
-      g.audio.play('groan', new THREE.Vector3(-3, BAL + 1.5, -45.9));
+      this.showApparition(-3, BAL, -58.9, Math.atan2(p.x + 3, p.z + 58.9), 2.6);
+      g.audio.play('groan', new THREE.Vector3(-3, BAL + 1.5, -58.9));
       return;
+    }
+    // 7. Мост к башне: под водой проплывает что-то большое.
+    if (!d.swimmer && z === 'corridor' && Math.abs(p.x) < 1.3 && p.z < -5 && p.z > -11) {
+      this.mark('swimmer');
+      if (!this.swimMesh) {
+        this.swimMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 3.2, 6, 12), new THREE.MeshStandardMaterial({ color: 0x050807, roughness: 0.4, transparent: true, opacity: 0.85 }));
+        this.swimMesh.rotation.z = Math.PI / 2;
+        g.scene.add(this.swimMesh);
+      }
+      this.swimMesh.visible = true;
+      this.events.push({ t: 0, dur: 3.2, kind: 'swim', z: p.z - 1.5 });
+      g.audio.play('splash', new THREE.Vector3(-4, POOL, p.z - 1.5));
+      setTimeout(() => g.audio.play('splash', new THREE.Vector3(5, POOL, p.z - 1.5)), 1800);
+      g.fx.distort(0.35);
+      g.mem.observe('swimmer', 'Под мостом в воде проплыло что-то длинное и тёмное. Больше человека. Вода сомкнулась без кругов.');
+      return;
+    }
+    // 8. Изолятор: в окне на тебя смотрит Оно.
+    if (!d.window && awake && z === 'start' && !g.monster.dead) {
+      const to = new THREE.Vector3(-1.8 - g.camera.position.x, 1.55 - g.camera.position.y, 0 - g.camera.position.z);
+      const dist = to.length();
+      const look = g.player.forward().dot(to.normalize());
+      this.windowGaze = dist < 5 && look > 0.9 ? (this.windowGaze || 0) + 0.2 : 0;
+      if (this.windowGaze > 0.6) {
+        this.mark('window');
+        this.showApparition(-1.8, 0, -1.0, Math.PI, 1.0);
+        g.audio.play('stinger');
+        g.fx.distort(0.5);
+        g.mem.observe('window', 'В окне изолятора, на мостках, стояло Оно и смотрело на меня. Секунду. Потом его не стало.');
+      }
     }
     // 6. Канал: в воде что-то плеснуло рядом.
     if (!d.splash && z === 'canal' && p.x > 42) {

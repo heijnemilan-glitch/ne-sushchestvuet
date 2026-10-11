@@ -89,7 +89,7 @@ function toBump(canvas, aniso) {
 }
 
 export function buildMaterials(quality = 'medium', maxAniso = 4) {
-  const S = quality === 'low' ? 256 : quality === 'high' ? 1024 : 512;
+  const S = quality === 'low' ? 256 : quality === 'high' || quality === 'ultra' ? 1024 : 512;
   const aniso = quality === 'low' ? 1 : Math.min(maxAniso, quality === 'high' ? 8 : 4);
   const n = fbmFactory(1337);
   const n2 = fbmFactory(4242);
@@ -276,6 +276,120 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     return t;
   })();
 
+  // ─ стальные панели бункера: крашеный металл, швы, заклёпки, подтёки ржавчины
+  const bunkerC = (() => {
+    const c = pixels(S, (u, v) => {
+      const a = n(u, v);
+      const rust = Math.pow(n2(u, v * 0.3, 4), 4) * 1.6 * (0.4 + v);
+      const chip = Math.max(0, n2(u * 4 % 1, v * 4 % 1, 3) - 0.7) * 1.4;
+      const k = (0.82 + a * 0.22) * (v > 0.72 ? 0.78 : 1);
+      return [mix(84 * k, 110, rust) + chip * 40, mix(98 * k, 62, rust) + chip * 40, mix(88 * k, 38, rust) + chip * 36];
+    });
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = 'rgba(20,24,20,0.85)';
+    ctx.lineWidth = Math.max(2, S / 200);
+    for (const p of [0, 0.5, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(p * S, 0);
+      ctx.lineTo(p * S, S);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(0, S * 0.72);
+    ctx.lineTo(S, S * 0.72);
+    ctx.stroke();
+    for (const x of [0.02, 0.48, 0.52, 0.98]) {
+      for (let i = 0; i < 8; i++) {
+        const y = (i + 0.5) / 8;
+        const gx = x * S;
+        const gy = y * S;
+        const gr = ctx.createRadialGradient(gx - S / 400, gy - S / 400, 0, gx, gy, S / 110);
+        gr.addColorStop(0, 'rgba(190,200,190,0.8)');
+        gr.addColorStop(1, 'rgba(30,34,30,0.9)');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(gx, gy, S / 120, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // подтёки ржавчины от заклёпок
+    for (let i = 0; i < 14; i++) {
+      const x = (i * 0.137 + 0.05) % 1;
+      const gr = ctx.createLinearGradient(0, 0, 0, S);
+      gr.addColorStop(0, 'rgba(110,52,24,0.0)');
+      gr.addColorStop(0.2, 'rgba(110,52,24,0.35)');
+      gr.addColorStop(1, 'rgba(110,52,24,0.0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(x * S, S * ((i * 0.31) % 0.6), S / 90, S * 0.5);
+    }
+    return c;
+  })();
+
+  // ─ клёпаные листы резервуара: тёмная сталь, внизу — след воды и водоросли
+  const tankC = (() => {
+    const c = pixels(S, (u, v) => {
+      const a = n(u, v);
+      const algae = v > 0.55 ? Math.min(1, (v - 0.55) * 4) * (0.6 + n2(u, v, 3) * 0.6) : 0;
+      const rust = Math.pow(n2(u, v, 4), 3) * 1.2;
+      const k = 0.62 + a * 0.3;
+      return [mix(mix(86 * k, 112, rust), 40, algae), mix(mix(90 * k, 60, rust), 58, algae), mix(mix(92 * k, 34, rust), 38, algae)];
+    });
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = 'rgba(14,16,16,0.9)';
+    ctx.lineWidth = Math.max(2, S / 150);
+    for (const p of [0, 0.5, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(0, p * S);
+      ctx.lineTo(S, p * S);
+      ctx.moveTo(p * S, 0);
+      ctx.lineTo(p * S, S);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(150,150,140,0.55)';
+    for (const y of [0.03, 0.47, 0.53, 0.97]) for (let i = 0; i < 12; i++) {
+      ctx.beginPath();
+      ctx.arc(((i + 0.5) / 12) * S, y * S, S / 150, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // линия старого уровня воды
+    ctx.fillStyle = 'rgba(30,40,24,0.55)';
+    ctx.fillRect(0, S * 0.55, S, S / 60);
+    return c;
+  })();
+
+  // ─ рифлёный стальной лист мостков
+  const treadC = (() => {
+    const c = pixels(S, (u, v) => {
+      const k = 0.62 + n(u, v) * 0.25 + Math.pow(n2(u, v, 3), 4) * 0.4;
+      return col([96, 98, 96], k);
+    });
+    const ctx = c.getContext('2d');
+    const step = S / 16;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const cx = (x + 0.5) * step;
+      const cy = (y + 0.5) * step;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((x + y) % 2 ? 0.8 : -0.8);
+      ctx.fillStyle = 'rgba(170,175,170,0.5)';
+      ctx.fillRect(-step * 0.32, -step * 0.08, step * 0.64, step * 0.16);
+      ctx.fillStyle = 'rgba(20,22,20,0.5)';
+      ctx.fillRect(-step * 0.32, step * 0.06, step * 0.64, step * 0.05);
+      ctx.restore();
+    }
+    return c;
+  })();
+
+  // ─ предупреждающая жёлто-чёрная разметка
+  const hazardC = (() => {
+    const c = pixels(S, (u, v) => {
+      const stripe = ((u + v) * 4) % 1 < 0.5;
+      const k = 0.8 + n(u, v) * 0.3;
+      return stripe ? [190 * k, 150 * k, 30 * k] : [26 * k, 24 * k, 20 * k];
+    });
+    return c;
+  })();
+
   const T = (c) => toTexture(c, aniso);
   const B = (c) => toBump(c, aniso);
 
@@ -328,6 +442,16 @@ export function buildMaterials(quality = 'medium', maxAniso = 4) {
     hospital: std({ map: T(whiteTileC), bumpMap: B(whiteTileC), bumpScale: 1, color: 0xb8c4bc, roughness: 0.45 }, 1.6),
     water: new THREE.MeshStandardMaterial({ color: 0x0b1410, roughness: 0.06, metalness: 0.55, normalMap: waterN, normalScale: new THREE.Vector2(0.6, 0.6), transparent: true, opacity: 0.93 }),
     sky: new THREE.MeshBasicMaterial({ color: 0x0a0f18, side: THREE.BackSide, fog: false }),
+    bunker: std({ map: T(bunkerC), bumpMap: B(bunkerC), bumpScale: 1.2, roughness: 0.6, metalness: 0.1, color: 0xd8dccf }, 2.4),
+    tank: std({ map: T(tankC), bumpMap: B(tankC), bumpScale: 1.4, roughness: 0.5, metalness: 0.15, color: 0xe0e0d8 }, 4),
+    tread: std({ map: T(treadC), bumpMap: B(treadC), bumpScale: 2, roughness: 0.45, metalness: 0.25, color: 0xe8e8e0 }, 1.2),
+    hazard: std({ map: T(hazardC), roughness: 0.6 }, 1),
+    pool: new THREE.MeshStandardMaterial({ color: 0x1d4a42, roughness: 0.11, metalness: 0.1, emissive: 0x03140f, normalMap: waterN, normalScale: new THREE.Vector2(0.55, 0.55), transparent: true, opacity: 0.93 }),
+    shallow: new THREE.MeshStandardMaterial({ color: 0x2a463a, roughness: 0.1, metalness: 0.15, normalMap: waterN, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.72, depthWrite: false }),
+    deep: new THREE.MeshBasicMaterial({ color: 0x02100c, fog: true }),
+    porthole: new THREE.MeshBasicMaterial({ color: 0x0d3a34, transparent: true, opacity: 0.85 }),
+    arc: new THREE.MeshBasicMaterial({ color: 0xa8d8ff }),
+    snow: new THREE.MeshStandardMaterial({ color: 0xc8ccd4, roughness: 0.95 }),
     copy: new THREE.MeshStandardMaterial({ color: 0xcfe3ea, emissive: 0x6f8f9a, emissiveIntensity: 0.6, roughness: 0.6, transparent: true, opacity: 0.38, depthWrite: false }),
   };
   return mats;

@@ -56,7 +56,15 @@ export class Builder {
   }
 
   // ── зоны ──────────────────────────────────────────────────────────────────
+  // Зона может состоять из нескольких коробок (например, мостки вокруг резервуара): повторный вызов
+  // с тем же id добавляет ещё одну коробку с той же группой и свойствами.
   zone(id, name, b, opts = {}) {
+    const prev = this.zoneMap.get(id);
+    if (prev) {
+      const extra = { ...prev, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1, y0: b.y0 ?? prev.y0, y1: b.y1 ?? prev.y1, extra: true };
+      this.zones.push(extra);
+      return extra;
+    }
     const group = new THREE.Group();
     group.name = id;
     this.root.add(group);
@@ -77,6 +85,7 @@ export class Builder {
       map: opts.map || null, // { level, x0, z0, x1, z1 } — как комната выглядит на карте
       priority: opts.priority || 0,
       crouch: !!opts.crouch,
+      ambient: opts.ambient ?? null,
       cullGroup: opts.cullGroup || id,
     };
     this.zones.push(z);

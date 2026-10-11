@@ -29,13 +29,14 @@ await page.eval(`(() => {
   return true; })()`);
 const grid = await page.eval('(() => { const g = NS.monster.grid; let p = 0; for (const v of g.cells) if (v) p++; return { w: g.w, h: g.h, passable: p }; })()');
 check('сетка проходимости построена', grid.passable > 1500, JSON.stringify(grid));
-const pathInfo = await page.eval(`(() => { const t0 = performance.now(); const p = NS.monster.grid.path({x:22.5,z:-11}, {x:-17,z:-6}); return { ok: !!p && p.length > 0, n: p ? p.length : 0, ms: Math.round(performance.now() - t0) }; })()`);
-check('путь монстра: щитовая → архив через двери', pathInfo.ok, JSON.stringify(pathInfo));
-check('путь в безопасную комнату невозможен', await page.eval('!NS.monster.grid.path({x:0,z:-5}, {x:0,z:4})'));
+const pathInfo = await page.eval(`(() => { const t0 = performance.now(); const p = NS.monster.grid.path({x:37,z:-11}, {x:-36,z:-9}); return { ok: !!p && p.length > 0, n: p ? p.length : 0, ms: Math.round(performance.now() - t0) }; })()`);
+check('путь монстра: подстанция → архив через мостки и двери', pathInfo.ok, JSON.stringify(pathInfo));
+check('путь в безопасную комнату невозможен', await page.eval('!NS.monster.grid.path({x:0,z:-2}, {x:0,z:4})'));
+check('в мастерскую за водой Оно не пройдёт', await page.eval('!NS.monster.grid.path({x:-16.3,z:-10}, {x:-24,z:-26})'));
 
 // будим монстра и ставим его в коридор, игрок с фонарём в 9 м
-await page.eval(`(() => { NS.monster.wake(true); NS.monster.pos.set(0, 0, -16); NS.monster.yaw = 0; NS.monster.state = 'patrol'; NS.monster.target = null;
-  tp(0, -7, Math.PI, -0.02); NS.flashlightOn = true; step(30); return NS.monster.state; })()`);
+await page.eval(`(() => { NS.monster.wake(true); NS.monster.pos.set(12, 0, -1.8); NS.monster.yaw = -Math.PI / 2; NS.monster.state = 'patrol'; NS.monster.target = null;
+  tp(3, -1.8, -Math.PI / 2, -0.02); NS.flashlightOn = true; step(30); return NS.monster.state; })()`);
 const st = await page.eval('NS.monster.state');
 check('монстр видит игрока с фонарём и начинает погоню', st === 'chase', st);
 await page.eval('step(40), true');
@@ -47,34 +48,35 @@ await page.shot(join(dir, 'h-chase.png'));
 check('страх растёт (пост-эффект)', (await page.eval('NS.fear')) > 0.3, String(await page.eval('NS.fear.toFixed(2)')));
 
 // шкафчик: прячемся вне поля зрения — монстр теряет след
-await page.eval(`(() => { NS.monster.pos.set(12.5, 0, -8); NS.monster.state = 'patrol'; NS.monster.target = null; NS.monster.cool = 0;
-  NS.flashlightOn = false; tp(-0.5, -4, -Math.PI/2); const l = NS.level.horror.lockers[0]; NS.toggleHide(l); step(5); return true; })()`);
+await page.eval(`(() => { NS.monster.pos.set(16.3, 0, -20); NS.monster.state = 'patrol'; NS.monster.target = null; NS.monster.cool = 0;
+  NS.flashlightOn = false; const l = NS.level.horror.lockers[0]; tp(l.front.x, l.front.z, l.yaw); NS.toggleHide(l); step(60); return true; })()`);
 check('игрок в шкафчике', await page.eval('!!NS.player.hiddenIn'));
 await sleep(200);
 await page.shot(join(dir, 'h-locker.png'));
-await page.eval('NS.monster.pos.set(0, 0, -6); NS.monster.yaw = Math.PI; step(60); true');
+await page.eval('NS.monster.pos.set(5.6, 0, -2.6); NS.monster.yaw = 0; step(60); true');
 check('в шкафчике монстр не видит', await page.eval('NS.monster.state !== "chase"'), await page.eval('NS.monster.state'));
 await page.eval('NS.toggleHide(NS.player.hiddenIn), step(60), true');
 check('выход из шкафчика', await page.eval('!NS.player.hiddenIn'));
 
 // поимка → возрождение в комнате пробуждения
-await page.eval(`(() => { NS.monster.cool = 0; NS.monster.pos.set(0, 0, -9); NS.monster.state = 'chase'; NS.monster.lastSeen = NS.player.pos.clone(); NS.monster.seenAt = NS.monster.time; tp(0, -8.2, Math.PI); NS.flashlightOn = true; step(20); return NS.state; })()`);
+await page.eval(`(() => { NS.monster.cool = 0; NS.monster.pos.set(-6, 0, -1.8); NS.monster.state = 'chase'; NS.monster.lastSeen = NS.player.pos.clone(); NS.monster.seenAt = NS.monster.time; tp(-5.2, -1.8, Math.PI / 2); NS.flashlightOn = true; step(20); return NS.state; })()`);
 check('поимка срабатывает', (await page.eval('NS.state')) === 'caught', await page.eval('NS.state'));
 await sleep(500);
 await page.shot(join(dir, 'h-caught.png'));
 await page.send('Page.bringToFront');
+for (let i = 0; i < 400 && (await page.eval('NS.state')) === 'caught'; i++) await page.eval('NS.updateCaught(1 / 20), new Promise(r => setTimeout(r, 50))');
 await page.wait('NS.state === "playing"', 20000).catch(() => {});
 check('возрождение в комнате пробуждения', await page.eval('NS.state === "playing" && NS.currentZone.id === "start"'), await page.eval('NS.state + " " + NS.currentZone.id'));
 check('смерть записана в память', (await page.eval('NS.mem.get("deaths")')) === 1);
 
 // виды для сайта/проверки
 const views = [
-  ['h-monster', 'tp(0,-6,0,0.06); NS.flashlightOn = true; NS.monster.pos.set(0,0,-11); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.timer = 0; NS.monster.target = NS.monster.pos.clone(); NS.monster.cool = 99;'],
-  ['h-monster-dark', 'tp(-2,-8,-1.2,0.05); NS.flashlightOn = false; NS.monster.pos.set(-9,0,-8); NS.monster.yaw = -1.57; NS.monster.cool = 99;'],
-  ['h-corridor', 'tp(0,-3,0,-0.03); NS.flashlightOn = true; NS.monster.pos.set(0,0,-15); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.timer = 0; NS.monster.target = null;'],
-  ['h-east', 'tp(3,-8,-Math.PI/2,-0.05); NS.flashlightOn = true; NS.monster.pos.set(30,0,30);'],
-  ['h-hall', 'tp(0,-23,0,0.05); NS.flashlightOn = false;'],
-  ['h-west', 'tp(-3,-8,Math.PI/2,-0.08); NS.flashlightOn = true;'],
+  ['h-monster', 'tp(16.3,-6,0,0.06); NS.flashlightOn = true; NS.monster.pos.set(16.3,0,-11.5); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.timer = 0; NS.monster.target = NS.monster.pos.clone(); NS.monster.cool = 99;'],
+  ['h-monster-dark', 'tp(-8,-1.8,-1.57,0.0); NS.flashlightOn = false; NS.monster.pos.set(-2,0,-1.8); NS.monster.yaw = 1.57; NS.monster.cool = 99;'],
+  ['h-bridge', 'tp(0,-3,0,-0.08); NS.flashlightOn = true; NS.monster.pos.set(0,0,-15); NS.monster.yaw = 0; NS.monster.state = "search"; NS.monster.timer = 0; NS.monster.target = null;'],
+  ['h-east', 'tp(19,-8,-Math.PI/2,-0.05); NS.flashlightOn = true; NS.monster.pos.set(60,0,60);'],
+  ['h-hall', 'tp(0,-38,0,0.05); NS.flashlightOn = false;'],
+  ['h-west', 'tp(-19,-8,Math.PI/2,-0.08); NS.flashlightOn = true;'],
 ];
 for (const [name, code] of views) {
   await page.eval(`(() => { ${code} step(30); NS.renderer.render(NS.scene, NS.camera); return true; })()`);

@@ -35,7 +35,7 @@ const data = await page.eval(`(() => {
     NS.flashlightOn = false; if (NS.monster) NS.monster.pos.set(60,0,60);
     eval(setup); tp(...p); NS.post.draw(NS.time);
     ctx.drawImage(NS.renderer.domElement, (i % cols) * W, Math.floor(i / cols) * H, W, H);
-    ctx.fillStyle = '#ff0'; ctx.font = '14px monospace'; ctx.fillText(n + ' [' + (NS.currentZone && NS.currentZone.id) + ']', (i % cols) * W + 6, Math.floor(i / cols) * H + 16);
+    ctx.fillStyle = '#ff0'; ctx.font = '14px monospace'; ctx.fillText(n + ' [' + (NS.currentZone && NS.currentZone.id) + '] ' + NS.state + (NS.renderer.getContext().isContextLost() ? ' LOST' : ''), (i % cols) * W + 6, Math.floor(i / cols) * H + 16);
   });
   return c.toDataURL('image/png');
 })()`);

@@ -23,12 +23,15 @@ import { Level } from './world/level.js';
 import { itemModel } from './world/props.js';
 import { UI } from './ui/ui.js';
 import { PostFX } from './render/post.js';
+import { setupEnvironment } from './render/atmos.js';
 import { loadModels } from './world/models.js';
 import { Monster } from './systems/monster.js';
 import { SurvivalSystem } from './systems/survival.js';
 import { BoatSystem } from './systems/boat.js';
 import { Scares } from './systems/scares.js';
 import { LoreSystem } from './systems/lore.js';
+import { WeaponSystem } from './systems/weapon.js';
+import { WaterBeast } from './systems/waterbeast.js';
 
 const QUALITY = {
   low: { lights: 4, dust: 0, antialias: false, shadows: false, post: false, res: 0.7 },
@@ -38,6 +41,8 @@ const QUALITY = {
 };
 const FOG = { color: 0x040505, density: 0.075 };
 const AMBIENT = 0.42;
+// версия карты: сохранения со старой карты загружаются, но игрок просыпается в изоляторе
+const MAP_VERSION = 3;
 
 class Game {
   constructor() {
@@ -141,6 +146,7 @@ class Game {
     this.scene.fog = new THREE.FogExp2(FOG.color, FOG.density);
     this.hemi = new THREE.HemisphereLight(0x8a969c, 0x1a1816, AMBIENT);
     this.scene.add(this.hemi);
+    setupEnvironment(this.renderer, this.scene, this.settings.quality);
     this.builder = new Builder(this.scene, this.mats);
     this.interaction = new InteractionSystem(this);
     this.player = new Player(this, this.camera);
@@ -161,6 +167,7 @@ class Game {
     });
     this.rules.registerAll(RULES);
     this.monster = new Monster(this);
+    this.beast = new WaterBeast(this);
     this.survival = new SurvivalSystem(this);
     this.boat = new BoatSystem(this);
     this.scares = new Scares(this);
@@ -172,6 +179,7 @@ class Game {
       this.camera.remove(this.flashlight.target);
     }
     this.flashlight = createFlashlight(this.camera, this.scene, this.settings.quality);
+    this.weapon = new WeaponSystem(this);
     if (!this.post) {
       this.post = new PostFX(this.renderer, this.scene, this.camera, this.settings.quality);
       this.post.setSize(innerWidth, innerHeight, this.renderer.getPixelRatio());
@@ -216,9 +224,28 @@ class Game {
       if (e.id === 'outside' && this.world.get('grateCut')) {
         setTimeout(() => this.state === 'playing' && this.ending('ending_escape'), 3500);
       }
+      if (e.id === 'surface' && this.world.get('blastOpen')) {
+        setTimeout(() => this.state === 'playing' && this.ending('ending_hunter'), 4000);
+      }
+      if (e.id === 'workshop' && e.visits === 1) mem.observe('workshop', 'Мастерская. Верстак, тиски, станки. На стене — схема ружья. Здесь кто-то готовился.');
       if (this.mem.data.playTime - this.lastAutosave > 25) this.autosave();
     });
+    bus.on('monster:dead', () => this.addCode('monster_killed'));
+    // осколок мнемита: вспышка чужого воспоминания
+    bus.on('supply:pickup', (e) => {
+      if (e.kind !== 'shard') return;
+      const n = Math.min(6, this.inv.count('shard'));
+      this.fx.distort(0.9);
+      this.audio.play('whisper', this.camera.position.clone());
+      this.audio.play('chime_far');
+      setTimeout(() => this.inGame && this.story.readNote(`n_shard${n}`), 700);
+      if (n >= 6) {
+        this.addCode('all_shards');
+        this.mem.observe('all_shards', 'Все шесть осколков мнемита у меня. Они звенят в унисон. Где-то внизу МНЕМА как будто вздохнула.');
+      }
+    });
     bus.on('item:pickup', (e) => {
+      if (e.id === 'map') setTimeout(() => this.inGame && this.ui.hint('Карта: [M]. На ней отмечено, как отсюда можно выбраться.', 6), 400);
       if (/^tape\d$/.test(e.id) && ['tape1', 'tape2', 'tape3', 'tape4'].every((t) => this.inv.has(t))) this.addCode('all_tapes');
     });
     bus.on('rule:discovered', (e) => {
@@ -268,11 +295,11 @@ class Game {
     // вступление
     this.paused = true;
     this.audio.play('scream_far');
-    await this.ui.cinematic(['Сектор 0.', 'Ты не помнишь, как здесь оказался.', 'За стеной что-то ходит.', 'Оно пока не знает, что ты проснулся.'], { hold: 1.4 });
+    await this.ui.cinematic(['1961 год. Под дном водохранилища нашли камень, который помнит.', 'Его назвали мнемит. Грамм дороже золота.', 'Вокруг построили Сектор 0. В 1987-м его затопило.', 'Ты не помнишь, как здесь оказался.', 'В воде и за стенами что-то ходит.'], { hold: 1.4 });
     if (this.state !== 'playing') return;
     this.paused = !!this.ui.modal;
     this.lockPointer();
-    setTimeout(() => this.inGame && this.ui.hint('На столе — терминал. Рядом лежит фонарь.', 5), 1500);
+    setTimeout(() => this.inGame && this.ui.hint('На столе — терминал, фонарь и сложенная карта.', 5), 1500);
   }
 
   continueGame() {
@@ -291,6 +318,17 @@ class Game {
     }
     const p = r.payload;
     this.slot = p.meta && p.meta.slot ? p.meta.slot : slot === 'auto' ? '1' : slot;
+    const oldMap = !p.meta || p.meta.map !== MAP_VERSION;
+    if (oldMap) {
+      // сохранение со старой карты: координаты больше не совпадают — просыпаемся в изоляторе
+      p.player = { x: 0.9, y: 0, z: 4.4, yaw: 0.35, pitch: -0.05 };
+      if (p.memory) p.memory.trail = [];
+      if (p.world && p.world.vars) {
+        delete p.world.vars.monsterCorpse;
+        delete p.world.vars.forkCirclePos;
+      }
+      if (p.world && p.world.items) for (const it of Object.values(p.world.items)) if (it.where === 'world' && it.room) { delete it.x; delete it.y; delete it.z; }
+    }
     try {
       this.buildWorld(p);
     } catch (err) {
@@ -302,6 +340,7 @@ class Game {
     this.entities.copy.prepareResidue(p.memory.trail);
     this.startPlaying(false);
     if (r.restored) this.ui.toast('Основное сохранение было повреждено — загружена резервная копия.');
+    if (oldMap) this.ui.hint('Комплекс перестроился, пока тебя не было. Ты снова в изоляторе.', 6);
     this.ui.hint(this.mem.data.currentRoom ? roomName(this.mem.data.currentRoom) : '', 2.5);
   }
 
@@ -329,7 +368,7 @@ class Game {
   save(slot) {
     if (!this.inGame || this.state === 'ending') return false;
     const payload = {
-      meta: { room: this.mem.data.currentRoom, playTime: this.mem.data.playTime, world: this.worldTag(), slot: this.slot },
+      meta: { map: MAP_VERSION, room: this.mem.data.currentRoom, playTime: this.mem.data.playTime, world: this.worldTag(), slot: this.slot },
       memory: this.mem.data,
       world: this.world.data,
       inventory: this.inv.data,
@@ -382,7 +421,7 @@ class Game {
     if (!this.profile.endings.includes(id)) this.profile.endings.push(id);
     this.saveProfile();
     this.saves.save(this.slot, {
-      meta: { room: this.mem.data.currentRoom, playTime: this.mem.data.playTime, world: this.worldTag(), slot: this.slot, ending: id },
+      meta: { map: MAP_VERSION, room: this.mem.data.currentRoom, playTime: this.mem.data.playTime, world: this.worldTag(), slot: this.slot, ending: id },
       memory: this.mem.data,
       world: this.world.data,
       inventory: this.inv.data,
@@ -397,7 +436,7 @@ class Game {
       `Помещений посещено: ${mem.visitedRooms().filter((r) => r !== 'vestibule').length}`,
       `Догадок о правилах: ${mem.discoveredRules().length} из ${this.rules.total}`,
       `Встреч с Наблюдателем: ${mem.get('observer_seen')}`,
-      `Найдено исходов: ${this.profile.endings.length} из 4`,
+      `Найдено исходов: ${this.profile.endings.length} из 7`,
     ];
     this.ui.fade(true);
     setTimeout(() => {
@@ -411,6 +450,10 @@ class Game {
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
     window.addEventListener('blur', () => this.player && this.player.keys.clear());
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || !this.locked || this.paused || this.state !== 'playing' || this.examining || !this.weapon) return;
+      this.weapon.fire();
+    });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked || this.paused) return;
       if (this.examining) {
@@ -471,6 +514,7 @@ class Game {
       else if (ui.modal === 'inventory' && (e.code === k.inventory || e.code === 'KeyI')) ui.closeModal();
       else if (ui.modal === 'inventory' && e.code === k.drop && ui.invSelected && ui.invSelected !== 'flashlight') this.dropItem(ui.invSelected);
       else if (ui.modal === 'journal' && e.code === k.journal) ui.closeModal();
+      else if (ui.modal === 'map' && e.code === k.map) ui.closeModal();
       else if (ui.modal === 'note' && (e.code === k.interact || e.code === 'Enter' || e.code === 'Space')) ui.closeModal();
       else if (ui.modal === 'keypad' && ui.keypadInput) {
         if (/^(Digit|Numpad)\d$/.test(e.code)) ui.keypadInput(e.code.slice(-1));
@@ -503,6 +547,7 @@ class Game {
       return;
     }
     if (e.code === k.flashlight) return this.toggleFlashlight();
+    if (e.code === k.map) return this.inv.has('map') ? ui.showMap() : ui.hint('Карты нет. Кажется, она лежала на столе в изоляторе.');
     if (e.code === k.mask) return this.survival.toggleMask();
     if (e.code === k.reload) return this.survival.swapBattery();
     if (this.survival.busy || this.boat.riding) return;
@@ -562,6 +607,7 @@ class Game {
 
   // ── предметы: осмотр и «положить» ─────────────────────────────────────────
   examine(item) {
+    if (item === 'map') return this.ui.showMap();
     this.ui.closeModal();
     const model = itemModel(ITEMS[item].model, this.mats);
     model.scale.setScalar(item === 'fork' || item === 'paper' ? 2.2 : 2.6);
@@ -630,9 +676,11 @@ class Game {
     this.renderer.shadowMap.enabled = q.shadows;
     if (this.post) {
       this.post.enabled = q.post;
+      this.post.setQuality(s.quality);
       this.post.bloom.strength = s.quality === 'ultra' ? 0.85 : s.quality === 'high' ? 0.75 : 0.6;
     }
     if (this.scene) {
+      setupEnvironment(this.renderer, this.scene, s.quality);
       if (q.dust && !this.dust) this.dust = new Dust(this.scene, q.dust);
       if (this.dust) this.dust.setVisible(!!q.dust);
     }
@@ -693,8 +741,8 @@ class Game {
     this.time += dt;
     const c = this.menuCam;
     c.t += dt;
-    const z = -2 - ((c.t * 0.35) % 16);
-    this.player.setPose({ x: Math.sin(c.t * 0.2) * 0.3, y: 0, z, yaw: Math.sin(c.t * 0.13) * 0.12, pitch: -0.03 + Math.sin(c.t * 0.3) * 0.03 });
+    const x = -13 + ((c.t * 0.32) % 26);
+    this.player.setPose({ x, y: 0, z: -1.6 + Math.sin(c.t * 0.2) * 0.2, yaw: -0.25 + Math.sin(c.t * 0.11) * 0.35, pitch: -0.12 + Math.sin(c.t * 0.3) * 0.03 });
     this.player.applyCamera(dt);
     this.level.cull(this.player.pos);
     this.lightPool.update(dt, this.player.pos, this.time);
@@ -805,8 +853,93 @@ class Game {
     this.mem.count('deaths');
   }
 
+  // Удар током: белые вспышки, судороги, падение — и пробуждение в изоляторе.
+  shock() {
+    if (this.state !== 'playing') return;
+    this.state = 'caught';
+    this.caught = { t: 0, shock: true, done: false };
+    this.player.keys.clear();
+    if (this.boat.riding) this.boat.abort();
+    this.audio.play('electrocute');
+    this.audio.setChase(0);
+    this.ui.setPrompt(null);
+    this.mem.count('deaths');
+    this.mem.count('shocked');
+    this.mem.observe('shocked', 'Вода под током. Меня било, пока тело не перестало слушаться. Я помню голубой свет — и запах палёного.');
+  }
+
+  // Утопленник утащил под воду: зелёная муть, камеру тянет вниз, всплеск — пробуждение в изоляторе.
+  drown(beast) {
+    if (this.state !== 'playing') return;
+    this.state = 'caught';
+    this.caught = { t: 0, drown: true, done: false, beast };
+    this.player.keys.clear();
+    this.audio.play('splash');
+    this.audio.play('screech');
+    this.audio.setChase(0);
+    this.ui.setPrompt(null);
+    this.mem.count('deaths');
+    this.mem.count('drowned');
+    this.mem.observe('drowned', 'Руки из воды схватили меня через перила. Холод. Темнота. Пузыри поднимались вверх, а я — нет.');
+  }
+
+  updateDrown(dt) {
+    const c = this.caught;
+    const ov = document.getElementById('drown-ov');
+    if (ov) ov.style.opacity = c.done ? '0' : String(Math.min(1, c.t / 1.2) * 0.92);
+    const b = c.beast;
+    if (b) {
+      const want = Math.atan2(-(b.pos.x - this.player.pos.x), -(b.pos.z - this.player.pos.z));
+      let d = want - this.player.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.player.yaw += d * Math.min(1, dt * 10);
+    }
+    this.player.pitch += (-0.9 - this.player.pitch) * Math.min(1, dt * 2.5);
+    this.player.pos.y += (-1.4 - this.player.pos.y) * Math.min(1, dt * 1.6);
+    this.player.roll = Math.sin(c.t * 9) * 0.05;
+    this.player.applyCamera(dt);
+    this.fear = c.done ? Math.max(0, this.fear - dt) : 1;
+    this.lightPool.update(dt, this.player.pos, this.time);
+    if (c.t > 1.9 && !c.done) {
+      c.done = true;
+      this.ui.fade(true);
+      setTimeout(async () => {
+        if (ov) ov.style.opacity = '0';
+        await this.ui.cinematic(['ВОДА.', 'Чьи-то руки держали тебя, пока ты не перестал считать.', 'Не стой у края.'], { hold: 1.0 });
+        this.respawn();
+      }, 600);
+    }
+  }
+
+  updateShock(dt) {
+    const c = this.caught;
+    const ov = document.getElementById('shock-ov');
+    const flick = Math.sin(c.t * 47) * Math.sin(c.t * 13.3) > 0.2 ? 1 : 0.15;
+    if (ov) ov.style.opacity = c.done ? '0' : String(Math.max(0, 1 - c.t / 1.9) * 0.85 * flick);
+    this.player.roll = c.done ? 0 : Math.sin(c.t * 61) * 0.06 * Math.max(0, 1.6 - c.t);
+    this.player.pitch += (-1.1 - this.player.pitch) * Math.min(1, dt * 1.5);
+    this.player.pos.y += (-0.9 - this.player.pos.y) * Math.min(1, dt * 1.2);
+    this.player.applyCamera(dt);
+    this.fear = c.done ? Math.max(0, this.fear - dt) : 0.8;
+    this.lightPool.update(dt, this.player.pos, this.time);
+    if (c.t > 1.8 && !c.done) {
+      c.done = true;
+      if (ov) ov.style.opacity = '0';
+      this.ui.fade(true);
+      setTimeout(async () => {
+        await this.ui.cinematic(['ТОК.', 'Вода держала тебя, пока ты не перестал дёргаться.'], { hold: 1.0, red: false });
+        this.respawn();
+      }, 600);
+    }
+  }
+
   updateCaught(dt) {
     const c = this.caught;
+    if (c.shock || c.drown) {
+      c.t += dt;
+      this.time += dt;
+      return c.drown ? this.updateDrown(dt) : this.updateShock(dt);
+    }
     c.t += dt;
     this.time += dt;
     const m = c.monster;
@@ -846,6 +979,10 @@ class Game {
     if (this.state !== 'caught') return;
     this.player.setPose({ x: 0.9, y: 0, z: 4.4, yaw: 0.35, pitch: -0.05 });
     this.player.roll = 0;
+    for (const id of ['shock-ov', 'drown-ov']) {
+      const ov = document.getElementById(id);
+      if (ov) ov.style.opacity = '0';
+    }
     this.monster.retreat();
     this.fear = 0;
     if (this.post) this.post.hit = 0;
@@ -862,18 +999,29 @@ class Game {
   update(dt) {
     this.time += dt;
     const t = this.time;
-    const moving = !this.survival.busy && !this.boat.riding && !this.lockerAnim;
+    const moving = !this.survival.busy && !this.boat.riding && !this.lockerAnim && !this.weapon.busy;
     const active = !this.examining && moving;
     if (this.lockerAnim) this.updateLockerAnim(dt);
     else if (moving) this.player.update(dt, active);
     this.survival.update(dt);
     this.boat.update(dt);
+    this.weapon.update(dt);
+    // страховка: если игрок как-то оказался в воде резервуара — вытащить на мостки
+    {
+      const pp = this.player.pos;
+      if (this.state === 'playing' && pp.y < -0.9 && pp.y > -6 && pp.x > -18 && pp.x < 18 && pp.z > -34 && pp.z < 0) {
+        this.player.setPose({ x: Math.max(-12, Math.min(12, pp.x)), y: 0, z: -1.8, yaw: Math.PI, pitch: 0 });
+        this.audio.play('splash');
+        this.ui.hint('Ты выбрался из воды на мостки. Холодно.', 3);
+      }
+    }
     if (this.state !== 'playing') return;
     this.level.update(dt, t);
     this.updateZone(false);
     this.mem.tick(dt);
     this.entities.update(dt);
     this.monster.update(dt);
+    this.beast.update(dt);
     this.scares.update(dt);
     if (this.state !== 'playing') return; // поймали в этом кадре
     this.puzzles.update(dt);
@@ -901,6 +1049,18 @@ class Game {
     let target = fl ? 58 : 0;
     // в узкой шахте стены в полуметре — полный луч засвечивает всё в белое
     if (this.currentZone && this.currentZone.crouch) target *= 0.22;
+    // вплотную к стене или столу луч не должен засвечивать всё в белое
+    if (this.weapon.wallD < 2.6) target *= 0.3 + (this.weapon.wallD / 2.6) * 0.7;
+    // вплотную к существу — тоже приглушить, иначе бледная кожа засвечивается в белое пятно
+    {
+      const cp = this.camera.position;
+      const near = [this.monster.mesh.visible ? this.monster.pos : null, this.beast.mesh.visible && this.beast.y > -1.6 ? this.beast.pos : null];
+      for (const c of near) {
+        if (!c) continue;
+        const d = Math.hypot(cp.x - c.x, cp.z - c.z);
+        if (d < 4) target *= 0.15 + (d / 4) * 0.85;
+      }
+    }
     // севшая батарейка: фонарь тускнеет и мигает
     const bat = this.survival.battery;
     if (fl && bat < 20) target *= 0.35 + (bat / 20) * 0.65 * (Math.sin(t * 17) * Math.sin(t * 5.3) > 0.6 ? 0.15 : 1);
@@ -952,7 +1112,10 @@ class Game {
     this._fogColor.setHex(zf.color);
     fog.color.lerp(this._fogColor, Math.min(1, dt * 1.5));
     this.scene.background.copy(fog.color);
-    this.hemi.intensity += ((this.currentZone && this.currentZone.id === 'void' ? 1.4 : AMBIENT) - this.hemi.intensity) * Math.min(1, dt);
+    const cz = this.currentZone;
+    // в больших залах — мягкий рассеянный свет (в резервуаре он гаснет вместе с линией 2)
+    const amb = cz && cz.id === 'void' ? 1.4 : cz && cz.ambient ? (cz.id === 'corridor' && !this.level.cableLive() ? 0.6 : cz.ambient) : AMBIENT;
+    this.hemi.intensity += (amb - this.hemi.intensity) * Math.min(1, dt);
   }
 
   updateZone(force) {

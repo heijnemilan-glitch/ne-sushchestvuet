@@ -219,6 +219,47 @@ export class Props {
   }
 }
 
+// Самодельное двуствольное ружьё: стволы вдоль +X, приклад к −X, фонарь примотан снизу.
+// Отдельные части (стволы) доступны через userData — их двигает анимация перезарядки.
+export function gunModel(mats, { withLight = true } = {}) {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5e3820, roughness: 0.5, emissive: 0x0c0604 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x3a3e42, roughness: 0.35, metalness: 0.8, emissive: 0x050606 });
+  const mk = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, parent = g) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  // приклад и цевьё
+  mk(new THREE.BoxGeometry(0.36, 0.05, 0.045), wood, -0.3, -0.03, 0, 0, 0, -0.16);
+  mk(new THREE.BoxGeometry(0.16, 0.06, 0.05), wood, -0.1, 0.0, 0);
+  mk(new THREE.BoxGeometry(0.03, 0.12, 0.055), mats.rubber, -0.48, -0.06, 0, 0, 0, -0.16);
+  // колодка и спусковая скоба
+  mk(new THREE.BoxGeometry(0.1, 0.055, 0.048), steel, 0.01, 0.012, 0);
+  mk(new THREE.TorusGeometry(0.022, 0.005, 5, 12, Math.PI), steel, -0.02, -0.03, 0, 0, 0, Math.PI);
+  // стволы на шарнире (переламываются при перезарядке)
+  const barrels = new THREE.Group();
+  barrels.position.set(0.05, 0.02, 0);
+  for (const s of [-0.017, 0.017]) mk(new THREE.CylinderGeometry(0.016, 0.016, 0.6, 10), steel, 0.3, 0.012, s, 0, 0, Math.PI / 2, barrels);
+  mk(new THREE.BoxGeometry(0.28, 0.035, 0.05), wood, 0.13, -0.018, 0, 0, 0, 0, barrels);
+  mk(new THREE.BoxGeometry(0.6, 0.006, 0.006), steel, 0.3, 0.032, 0, 0, 0, 0, barrels);
+  g.add(barrels);
+  g.userData.barrels = barrels;
+  if (withLight) {
+    // фонарь на изоленте под стволами
+    const lightBody = mk(new THREE.CylinderGeometry(0.02, 0.02, 0.16, 10), mats.plastic, 0.32, -0.025, 0, 0, 0, Math.PI / 2, barrels);
+    mk(new THREE.CylinderGeometry(0.028, 0.021, 0.04, 10), mats.metal, 0.42, -0.025, 0, 0, 0, Math.PI / 2, barrels);
+    const lens = mk(new THREE.CircleGeometry(0.024, 12), mats.lampWarm.clone(), 0.441, -0.025, 0, 0, Math.PI / 2, 0, barrels);
+    for (const x of [0.28, 0.36]) mk(new THREE.CylinderGeometry(0.03, 0.03, 0.012, 10), mats.rubber, x, -0.012, 0, 0, 0, Math.PI / 2, barrels);
+    g.userData.lens = lens;
+    g.userData.lightBody = lightBody;
+  }
+  return g;
+}
+
 // Модели предметов (для поднятия и осмотра).
 export function itemModel(kind, mats) {
   const g = new THREE.Group();
@@ -298,6 +339,49 @@ export function itemModel(kind, mats) {
     case 'note':
       add(new THREE.BoxGeometry(0.21, 0.002, 0.29), mats.paper, 0, 0.001, 0, 0, 0.15, 0);
       break;
+    case 'mapitem': {
+      add(new THREE.BoxGeometry(0.24, 0.012, 0.17), new THREE.MeshStandardMaterial({ color: 0xcfc6a8, roughness: 0.9 }), 0, 0.006, 0, 0, 0.1, 0);
+      add(new THREE.BoxGeometry(0.23, 0.002, 0.004), new THREE.MeshStandardMaterial({ color: 0x8a3020 }), 0, 0.013, 0.02, 0, 0.1, 0);
+      add(new THREE.BoxGeometry(0.004, 0.002, 0.16), new THREE.MeshStandardMaterial({ color: 0x5a5a50 }), 0.04, 0.013, 0, 0, 0.1, 0);
+      break;
+    }
+    case 'barrel': {
+      for (const s of [-0.018, 0.018]) add(new THREE.CylinderGeometry(0.017, 0.017, 0.62, 10), mats.metalDark, 0, 0.02, s, 0, 0, Math.PI / 2);
+      add(new THREE.BoxGeometry(0.08, 0.03, 0.06), mats.metal, -0.29, 0.02, 0);
+      break;
+    }
+    case 'stock': {
+      const wood = new THREE.MeshStandardMaterial({ color: 0x6a4026, roughness: 0.55 });
+      add(new THREE.BoxGeometry(0.34, 0.045, 0.04), wood, 0, 0.03, 0, 0, 0, -0.12);
+      add(new THREE.BoxGeometry(0.06, 0.1, 0.045), wood, 0.17, 0.05, 0);
+      add(new THREE.BoxGeometry(0.02, 0.11, 0.05), mats.rubber, -0.17, 0.045, 0);
+      break;
+    }
+    case 'bolt': {
+      add(new THREE.BoxGeometry(0.12, 0.05, 0.05), mats.metal, 0, 0.025, 0);
+      add(new THREE.TorusGeometry(0.025, 0.005, 5, 12, Math.PI), mats.metalDark, 0.01, 0.0, 0, 0, 0, Math.PI);
+      add(new THREE.BoxGeometry(0.008, 0.04, 0.012), mats.metalDark, 0.01, -0.0, 0);
+      add(new THREE.BoxGeometry(0.14, 0.003, 0.09), new THREE.MeshStandardMaterial({ color: 0x5a4a32, roughness: 1 }), 0, 0.0, 0);
+      break;
+    }
+    case 'shotgun':
+      g.add(gunModel(mats));
+      break;
+    case 'shard': {
+      // осколок мнемита: светящиеся сине-зелёные кристаллы
+      const glow = new THREE.MeshStandardMaterial({ color: 0x3ae0c8, emissive: 0x1ab8a4, emissiveIntensity: 1.6, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.92 });
+      add(new THREE.OctahedronGeometry(0.045, 0), glow, 0, 0.06, 0, 0.2, 0, 0.1).scale.set(0.7, 1.8, 0.7);
+      add(new THREE.OctahedronGeometry(0.03, 0), glow, 0.035, 0.035, 0.01, 0, 0.5, -0.7).scale.set(0.7, 1.6, 0.7);
+      add(new THREE.OctahedronGeometry(0.025, 0), glow, -0.03, 0.03, -0.015, 0.3, 0, 0.8).scale.set(0.7, 1.5, 0.7);
+      add(new THREE.CylinderGeometry(0.05, 0.06, 0.015, 7), mats.concreteDark, 0, 0.007, 0);
+      break;
+    }
+    case 'shells': {
+      const box = new THREE.MeshStandardMaterial({ color: 0x7a2a1a, roughness: 0.7 });
+      add(new THREE.BoxGeometry(0.1, 0.05, 0.07), box, 0, 0.025, 0);
+      for (let i = 0; i < 2; i++) add(new THREE.CylinderGeometry(0.009, 0.009, 0.06, 8), new THREE.MeshStandardMaterial({ color: 0xc02818, roughness: 0.4 }), 0.075, 0.009, -0.012 + i * 0.024, 0, 0, Math.PI / 2);
+      break;
+    }
     default:
       add(new THREE.BoxGeometry(0.1, 0.1, 0.1), mats.metal);
   }
